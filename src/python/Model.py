@@ -165,33 +165,65 @@ class Model:
             print(f'-- local domain sizes (nx_p): {self.nx_p}')
 
 
-    def toPhysical(self):
-        # define basis functions
-        Fa = lambda M, H, P, x, y: np.sqrt(2)*np.cos(P*y)
-        Fk = lambda M, H, P, x, y: 2*np.cos(M*x*params_maooam.n)*np.sin(P*y)
-        Fl = lambda M, H, P, x, y: 2*np.sin(H*x*params_maooam.n)*np.sin(P*y)
-        phi = lambda M, H, P, x, y: 2*np.sin(0.5*H*x*params_maooam.n)*np.sin(P*y)
-        basis = {'A' : Fa, 'K' : Fk, 'L' : Fl}
-
+    def toPhysical(self, coeffs, xc, yc):
         # define spatial domain
-        natm = params_maooam.natm
-        noc = params_maooam.noc
-        xx = np.linspace(0, 2*np.pi/params_maooam.n, 100, endpoint=True)
-        yy = np.linspace(0, np.pi, 100, endpoint=True)
-        Xc, Yc = np.meshgrid(xx, yy)
+        natm, noc = self.model_parameters.nmod
 
         # get atmospheric components
-        psi_a = np.zeros_like(Xc)
-        T_a = np.zeros_like(Xc)
-        for i, ti in enumerate(awavenum):
-            psi_a += X[i]*basis[ti.typ](ti.M, ti.H, ti.P, Xc, Yc)
-            T_a += X[i + natm]*basis[ti.typ](ti.M, ti.H, ti.P, Xc, Yc)
+        basis = model_parameters.atmospheric_basis.num_functions()
+        psi_a = np.zeros_like(xc)
+        T_a = np.zeros_like(xc)
+        for i, b in enumerate(basis):
+            psi_a += coeffs[i]*b(xc, yc)
+            T_a += coeffs[i + natm]*b(xc, yc)
 
         # get ocean components
-        psi_o = np.zeros_like(Xc)
-        T_o = np.zeros_like(Xc)
-        for i, ti in enumerate(owavenum):
-            psi_o += X[i + 2*natm]*basis[ti.typ](ti.M, ti.H, ti.P, Xc, Yc)
-            T_o += X[i + 2*natm + noc]*basis[ti.typ](ti.M, ti.H, ti.P, Xc, Yc)
+        basis = model_parameters.oceanic_basis.num_functions()
+        psi_o = np.zeros_like(xc)
+        T_o = np.zeros_like(xc)
+        for i, b in enumerate(basis):
+            psi_o += coeffs[i + 2*natm]*b(xc, yc)
+            T_o += coeffs[i + 2*natm + noc]*b(xc, yc)
+
+        return psi_a, T_a, psi_o, T_o
+
+
+    def toFourier(self, xc, yc):
+        # define spatial domain
+        natm, noc = self.model_parameters.nmod
+        dx = 2*np.pi/n/len(xc)
+        dy = np.pi/len(xc[0])
+
+        # get atmospheric components
+        basis = model_parameters.atmospheric_basis.num_functions()
+        psi_a = np.zeros_like(xc)
+        T_a = np.zeros_like(xc)
+        for i, b in enumerate(basis):
+            coeffs[i] = scipy.integrate.romb(
+                            scipy.integrate.romb(
+                                psi_a*b(xc, yc), dx=dy
+                                ), dx=dx
+                            )
+            coeffs[i+natm] = scipy.integrate.romb(
+                                scipy.integrate.romb(
+                                    T_a*b(xc, yc), dx=dy
+                                    ), dx=dx
+                                )
+
+        # get ocean components
+        basis = model_parameters.oceanic_basis.num_functions()
+        psi_o = np.zeros_like(xc)
+        T_o = np.zeros_like(xc)
+        for i, ti in enumerate(basis):
+            coeffs[i + 2*natm] = scipy.integrate.romb(
+                            scipy.integrate.romb(
+                                psi_o*b(xc, yc), dx=dy
+                                ), dx=dx
+                            )
+            coeffs[i + 2*natm + noc] = scipy.integrate.romb(
+                                scipy.integrate.romb(
+                                    T_o*b(xc, yc), dx=dy
+                                    ), dx=dx
+                                )
 
         return psi_a, T_a, psi_o, T_o

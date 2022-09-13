@@ -59,9 +59,6 @@ def main():
     # Initialize model
     model = Model.Model(config['Model'], pe=pe)
 
-    # for step in range(model.t0):
-    #     model.step(pe, step, usePDAF)
-
     obs = ObsFactory(config['Obs'], pe.mype_filter, model)
 
     das = DAS(pe, model, obs, screen=screen)

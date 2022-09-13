@@ -106,11 +106,13 @@ contains
    end subroutine init_pdaf
 
    subroutine finalize_pdaf()
-      use mpi
       use mod_parallel_pdaf, &
          only: mype_world, mpierr
       use pdaf_interfaces_module, only: PDAF_print_info, PDAF_deallocate
       use mod_obswriter_pdaf, only: finalizeObs
+
+      include 'mpif.h'
+
       ! Show allocated memory for PDAF
       if (mype_world==0) call PDAF_print_info(2)
       if (mype_world==0) call PDAF_print_info(11)

@@ -31,7 +31,7 @@ contains
       ierr = nf90_def_dim( ncid, 'time', nf90_unlimited, dimid(1) )
       ierr = nf90_def_var( ncid, 'time', nf90_double, dimid(1), varid_time )
       ierr = nf90_put_att( ncid, varid_time, 'long_name', 'time' )
-      ierr = nf90_put_att( ncid, varid_time, 'units', 'days since 1900-1-1 0:0:0' )
+      ierr = nf90_put_att( ncid, varid_time, 'units', 'seconds since 1900-1-1 0:0:0' )
       ierr = nf90_def_dim( ncid, 'ens', dim_ens, dimid(2) )
       ierr = nf90_def_dim( ncid, 'natm', natm, dimid(3) )
       ierr = nf90_def_dim( ncid, 'noc', noc, dimid(4) )
@@ -98,18 +98,18 @@ contains
    end function iso8601
 
    subroutine write_model(step, vartype, inputData, natm, noc, dim_ens)
-      integer, intent(in) :: step
+      real(wp), intent(in) :: step
       character, intent(in) :: vartype
       real(wp), intent(in) :: inputData(:, :)
       integer, intent(in)      :: natm, noc, dim_ens
 
       integer :: offsets(5)
       integer :: dims(4)
-      integer :: i, ierr
+      integer :: i, ierr, i_ens
       integer :: i0
 
       time_count = time_count + 1
-      ierr = nf90_put_var(ncid, varid_time, [real(step, wp)], start=[time_count], count=[1])
+      ierr = nf90_put_var(ncid, varid_time, [step], start=[time_count], count=[1])
 
       if (vartype == 'f') then
          i0 = 0
@@ -120,11 +120,13 @@ contains
       dims = [natm, natm, noc, noc]
 
       do i = 1, 4
-         ierr = nf90_put_var(ncid, varid(i0 + i), &
-                             inputData(offsets(i)+1:offsets(i+1), :), &
-                             start=[1, 1, time_count], &
-                             count=[dim_ens, dims(i), 1] &
-                             )
+         do i_ens = 1, dim_ens
+            ierr = nf90_put_var(ncid, varid(i0 + i), &
+                                inputData(offsets(i)+1:offsets(i+1), i_ens), &
+                                start=[i_ens, 1, time_count], &
+                                count=[1, dims(i), 1] &
+                                )
+         end do
       end do
    end subroutine write_model
 

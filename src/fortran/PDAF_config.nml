@@ -1,7 +1,7 @@
-! [Global]
-! usePDAF = True
-! screen = 0
-! 
+[Global]
+usePDAF = True
+screen = 0
+
 &ens_nml
   dim_ens = 1
   n_modeltasks = 1

@@ -18,10 +18,10 @@
 !!
 MODULE mod_parallel_pdaf
 
-USE mpi
-
 IMPLICIT NONE
 SAVE 
+
+INCLUDE 'mpif.h'
 
 ! Basic variables for model state integrations
 INTEGER :: COMM_model  !< MPI communicator for model tasks
@@ -144,6 +144,7 @@ CONTAINS
       INTEGER :: pe_index           ! Index of PE
       INTEGER :: my_color, color_couple ! Variables for communicator-splitting 
       LOGICAL :: iniflag            ! Flag whether MPI is initialized
+
       namelist /ens_nml/ dim_ens, n_modeltasks
 
       ! *** Initialize MPI if not yet initialized ***
@@ -298,6 +299,7 @@ CONTAINS
 
       END IF
 
+      DEALLOCATE(local_npes_model)
    END SUBROUTINE init_parallel_pdaf
 
 END MODULE mod_parallel_pdaf

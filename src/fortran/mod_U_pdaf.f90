@@ -69,7 +69,7 @@ contains
 
       allocate(eofV(dim_ens - 1, dim_p))
 
-      state_p = field(1:)
+      state_p = field(1:, 1)
 
       if (dim_ens > 1) then
          do i = 1, 2
@@ -83,7 +83,7 @@ contains
 
          call PDAF_sampleens(dim_p, dim_ens, eofV, svals, state_p, ens_p, verbose=1, flag=status_pdaf)
       else
-         ens_p(:, 1) = field(1:)
+         ens_p(:, 1) = field(1:, 1)
       end if
 
       ierr = nf90_close(ncid)
@@ -140,7 +140,7 @@ contains
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
       !**************************************************
-      field(1:) = state_p
+      field(1:, 1) = state_p
    END SUBROUTINE distribute_state_pdaf
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
@@ -158,16 +158,17 @@ contains
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
       ! *************************************************
-      state_p = field(1:)
+      state_p = field(1:, 1)
    END SUBROUTINE collect_state_pdaf
 
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
                                    dim_obs_p, state_p, uinv, ens_p, flag)
       use mod_parallel_pdaf, only: mype_world, mype_filter, comm_filter, &
                                    npes_filter, MPIerr, MPIstatus
-      use mpi
-      use mod_model_pdaf, only: noc, natm, dim_state_p
+      use mod_model_pdaf, only: noc, natm, dim_state_p, integr
       use mod_ModelWriter_pdaf, only: write_model
+
+      include 'mpif'
 
       INTEGER, INTENT(in) :: step        !< Current time step (negative for call after forecast)
       INTEGER, INTENT(in) :: dim_p       !< PE-local state dimension
@@ -239,10 +240,10 @@ contains
 
       if (step <= 0) then
          print *, '---writing ensemble forecast---'
-         call write_model(-step, 'f', ens_p, natm, noc, dim_ens)
+         call write_model(-step*integr%dt, 'f', ens_p, natm, noc, dim_ens)
       else
          print *, '---writing ensemble analysis---'
-         call write_model(step, 'a', ens_p, natm, noc, dim_ens)
+         call write_model(step*integr%dt, 'a', ens_p, natm, noc, dim_ens)
       endif
 
       firsttime = .false.
