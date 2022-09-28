@@ -67,7 +67,7 @@ class Obs:
        (0) obs. restricted to those relevant for a process domain
     """
 
-    def __init__(self, i_obs, obsname, mype_filter, nx):
+    def __init__(self, i_obs, obsname, mype_filter, model_n):
         """constructor
 
         Parameters
@@ -76,8 +76,8 @@ class Obs:
             name of the observation type
         mype_filter : int
             rank of the PE in filter communicator
-        nx : ndarray
-            grid size of the model domain
+        model_n : float
+            model domain aspect ratio parameter 
         doassim : int
             whether to assimilate this observation type
         delt_obs : int
@@ -107,7 +107,7 @@ class Obs:
 
         # Number of coordinates used for distance computation
         # The distance compution starts from the first row
-        self.ncoord = config.getint('ncoord', 1)
+        self.ncoord = config.getint('ncoord', 2)
 
         # Allocate process-local index array
         # This array has as many rows as required
@@ -119,7 +119,8 @@ class Obs:
         # Size of domain for periodicity for disttype=1
         # (<0 for no periodicity)
         self.domainsize = np.zeros(self.ncoord)
-        self.domainsize[0] = nx
+        self.domainsize[0] = 2*np.pi/model_n
+        self.domainsize[1] = np.pi
 
         # Type of observation error: (0) Gauss, (1) Laplace
         self.obs_err_type = config.getint('obs_err_type', 0)
@@ -134,9 +135,8 @@ class Obs:
 
         self.time_count = 0
 
-    
     def init_dim_obs(self, step, dim_obs, local_range,
-                     mype_filter, nx, nx_p):
+                     mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
@@ -149,17 +149,17 @@ class Obs:
             range for local observation domain
         mype_filter : int
             rank of the PE in filter communicator
-        nx : ndarray
+        dim_state : ndarray
             integer array for grid size
-        nx_p : ndarray
+        dim_state_p : ndarray
             integer array for PE-local grid size
         """
-        obs_field = self.get_obs_field(step, nx)
+        obs_field = self.get_obs_field(step)
 
         # Count valid observations that
         # lie within the process sub-domain
-        pe_start = nx_p*mype_filter
-        pe_end = nx_p*(mype_filter+1)
+        pe_start = dim_state_p*mype_filter
+        pe_end = dim_state_p*(mype_filter+1)
         obs_field_p = obs_field[pe_start:pe_end]
         cnt_p = np.count_nonzero(obs_field_p > self.missing_value)
         self.dim_obs_p = cnt_p
@@ -168,8 +168,8 @@ class Obs:
         # Initialize coordinate array of observations
         # on the process sub-domain
         if self.dim_obs_p > 0:
-            self.set_obs_p(nx_p, obs_field_p)
-            self.set_id_obs_p(nx_p, obs_field_p)
+            self.set_obs_p(obs_field_p)
+            self.set_id_obs_p(obs_field_p)
             self.set_ocoord_p(obs_field_p, pe_start)
             self.set_ivar_obs_p()
         else:
@@ -181,7 +181,7 @@ class Obs:
         self.set_PDAFomi(local_range)
 
     def init_dim_obs_gen(self, step, dim_obs, local_range,
-                               mype_filter, nx, nx_p):
+                               mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
@@ -194,20 +194,20 @@ class Obs:
             range for local observation domain
         mype_filter : int
             rank of the PE in filter communicator
-        nx : ndarray
+        dim_state : ndarray
             integer array for grid size
-        nx_p : ndarray
+        dim_state_p : ndarray
             integer array for PE-local grid size
         """
 
         # Count valid observations that
         # lie within the process sub-domain
-        obs_field = np.zeros(nx)
+        obs_field = np.zeros(dim_state)
 
         # Count valid observations that
         # lie within the process sub-domain
-        pe_start = nx_p*mype_filter
-        pe_end = nx_p*(mype_filter+1)
+        pe_start = dim_state_p*mype_filter
+        pe_end = dim_state_p*(mype_filter+1)
         obs_field_p = obs_field[pe_start:pe_end]
         cnt_p = np.count_nonzero(obs_field_p > self.missing_value)
         self.dim_obs_p = cnt_p
@@ -216,8 +216,8 @@ class Obs:
         # Initialize coordinate array of observations
         # on the process sub-domain
         if self.dim_obs_p > 0:
-            self.set_obs_p(nx_p, obs_field_p)
-            self.set_id_obs_p(nx_p, obs_field_p)
+            self.set_obs_p(obs_field_p)
+            self.set_id_obs_p(obs_field_p)
             self.set_ocoord_p(obs_field_p, pe_start)
             self.set_ivar_obs_p()
         else:
@@ -228,32 +228,28 @@ class Obs:
 
         self.set_PDAFomi(local_range)
 
-    def set_obs_p(self, nx_p, obs_field_p):
+    def set_obs_p(self, obs_field_p):
         """set up PE-local observation vector
 
         Parameters
         ----------
-        nx_p : ndarray
-            PE-local model domain
         obs_field_p : ndarray
             PE-local observation field
         """
-        obs_field_tmp = obs_field_p.reshape(np.prod(nx_p), order='F')
+        obs_field_tmp = obs_field_p.ravel()
         self.obs_p = np.zeros(self.dim_obs_p)
         self.obs_p[:self.dim_obs_p] = obs_field_tmp[obs_field_tmp > self.missing_value]
 
-    def set_id_obs_p(self, nx_p, obs_field_p):
+    def set_id_obs_p(self, obs_field_p):
         """set id_obs_p
 
         Parameters
         ----------
-        nx_p : ndarray
-            PE-local model domain
         obs_field_p : ndarray
             PE-local observation field
         """
         self.id_obs_p = np.zeros((self.nrows, self.dim_obs_p))
-        obs_field_tmp = obs_field_p.reshape(np.prod(nx_p), order='F')
+        obs_field_tmp = obs_field_p.ravel()
         cnt0_p = np.where(obs_field_tmp > self.missing_value)[0] + 1
         assert len(cnt0_p) == self.dim_obs_p, 'dim_obs_p should equal cnt0_p'
         self.id_obs_p[0, :self.dim_obs_p] = cnt0_p
@@ -279,15 +275,13 @@ class Obs:
                                 self.dim_obs_p
                                 )/(self.rms_obs*self.rms_obs)
 
-    def get_obs_field(self, step, nx):
+    def get_obs_field(self, step):
         """retrieve observation field
 
         Parameters
         ----------
         step : int
             current time step
-        nx : ndarray
-            grid size of the model domain
 
         Returns
         -------
@@ -295,7 +289,7 @@ class Obs:
             observation field
         """
         f = xr.open_dataset(self.filename)
-        obs_field = np.concatenate([f[varname][self.time_count].to_numpy() 
+        obs_field = np.concatenate([f[varname].isel(time=self.time_count).to_numpy().ravel() 
                               for varname in ['psi_a', 'T_a', 'psi_o', 'T_o']])
         self.time_count += 1
         return obs_field

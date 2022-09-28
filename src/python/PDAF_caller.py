@@ -210,8 +210,8 @@ class assimilate_pdaf:
                               obs,
                               local.local_range,
                               pe.mype_filter,
-                              model.nx,
-                              model.nx_p)
+                              sv.dim_state,
+                              sv.dim_state_p)
 
         U_obs_op_PDAFomi = \
             functools.partial(U_PDAFomi.obs_op_pdafomi,
@@ -223,7 +223,7 @@ class assimilate_pdaf:
                                   sv)
             U_init_dim_l_pdaf = \
                 functools.partial(local.init_dim_l_pdaf,
-                                  model.nx_p, pe.mype_filter)
+                                  model, pe.mype_filter)
             U_init_dim_obs_l_pdafomi = \
                 functools.partial(U_PDAFomi.init_dim_obs_l_pdafomi,
                                   obs, local)
@@ -243,8 +243,8 @@ class assimilate_pdaf:
             if filtertype == 8:
                 U_localize_covar_pdafomi = \
                     functools.partial(U_PDAFomi.localize_covar_pdafomi,
-                                      obs, local,
-                                      pe.mype_filter, model.nx_p)
+                                      obs, local, model,
+                                      pe.mype_filter)
                 status = \
                     PDAFomi.assimilate_lenkf(U_collect_state_pdaf,
                                              U_distribute_state_pdaf,
@@ -260,8 +260,8 @@ class assimilate_pdaf:
                                       obs,
                                       local.local_range,
                                       pe.mype_filter,
-                                      model.nx,
-                                      model.nx_p)
+                                      sv.dim_state,
+                                      sv.dim_state_p)
                 status = \
                     PDAFomi.generate_obs(U_collect_state_pdaf,
                                          U_distribute_state_pdaf,

@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import pyPDAF.PDAF.PDAFomi as PDAFomi
 import PDAF_caller
-from ModelWriter import ModelWriter
+from StateWriter import StateWriter
 
 
 class DAS:
@@ -94,7 +94,7 @@ class DAS:
 
         self.writer = None
         if self.pe.filterpe:
-            self.writer = ModelWriter('MAOOAM.nc', self.sv.dim_ens, self.model)
+            self.writer = StateWriter('MAOOAM.nc', self.sv.dim_ens, self.model)
         if self.options.filtertype == 100:
             self.obs.setWriter(self.pe, self.model)
 

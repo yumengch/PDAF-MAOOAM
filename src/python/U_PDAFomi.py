@@ -49,14 +49,19 @@ def get_obs_f(obsFactory, step, dim_obs_f, observation_f):
 
 
 def init_dim_obs_gen_pdafomi(obsFactory, local_range,
-                             mype_filter, nx, nx_p, step, dim_obs):
+                             mype_filter, dim_state, 
+                             dim_state_p, step, dim_obs):
     """initialise observation dimensions
 
     Parameters
     ----------
     obsFactory : dict
         a dictionary of observations
-    nx_p : ndarray
+    local_range : float
+    mype_filter : int
+    dim_state : ndarray
+        integer array for grid size
+    dim_state_p : ndarray
         integer array for PE-local grid size
     step : int
         current time step
@@ -72,13 +77,14 @@ def init_dim_obs_gen_pdafomi(obsFactory, local_range,
     for obsname, obs in obsFactory.items():
         if(obs.doassim):
             obs.init_dim_obs_gen(step, dim_obs, local_range,
-                                 mype_filter, nx, nx_p)
+                                 mype_filter, dim_state, dim_state_p)
             dim_obs += obs.dim_obs
     return dim_obs
 
 
 def init_dim_obs_pdafomi(obsFactory, local_range,
-                         mype_filter, nx, nx_p, step, dim_obs):
+                         mype_filter, dim_state, 
+                         dim_state_p, step, dim_obs):
     """initialise observation dimensions
 
     Parameters
@@ -89,9 +95,9 @@ def init_dim_obs_pdafomi(obsFactory, local_range,
         range for local observation domain
     mype_filter : int
         rank of the PE in filter communicator
-    nx : ndarray
+    dim_state : ndarray
         integer array for grid size
-    nx_p : ndarray
+    dim_state_p : ndarray
         integer array for PE-local grid size
     step : int
         current time step
@@ -159,8 +165,8 @@ def init_dim_obs_l_pdafomi(obsFactory, local,
                            domain_p, step, dim_obs, dim_obs_l)
 
 
-def localize_covar_pdafomi(obsFactory, local,
-                           mype_filter, nx_p, HP_p, HPH):
+def localize_covar_pdafomi(obsFactory, local, model,
+                           mype_filter, dim_state_p, HP_p, HPH):
     """localize covariance matrix
 
     Parameters
@@ -169,9 +175,11 @@ def localize_covar_pdafomi(obsFactory, local,
         a dictionary of observations
     local : `Localization.Localization`
         a localization info obejct
+    model : `Model.Model`
+        a model info obejct
     mype_filter : int
         rank of the PE in filter communicator
-    nx_p : ndarray
+    dim_state_p : float
         integer array for PE-local grid size
     HP_p : ndarray
         matrix HP
@@ -180,9 +188,10 @@ def localize_covar_pdafomi(obsFactory, local,
     """
     dim_p = HPH.shape[0]
     coords_p = np.zeros((2, dim_p))
-    offset = mype_filter*nx_p
+    offset = mype_filter*dim_state_p
 
-    coords_p[0] = np.arange(nx_p) + offset
+    coords_p[0] = model.xc.ravel()
+    coords_p[1] = model.yc.ravel()
 
     for obsname, obs in obsFactory.items():
         obs.localize_covar(localization, HP_p, HPH, coords_p)

@@ -6,8 +6,8 @@ import netCDF4
 # from MAOOAM.model.params_maooam import natm, noc
 
 
-class ObsWriter:
-    def __init__(self, filename, model):
+class StateWriter:
+    def __init__(self, filename, dim_ens, model):
         self.nc = netCDF4.Dataset(filename,'w')
 
         attrs = self.getFileAttrs()
@@ -15,30 +15,31 @@ class ObsWriter:
             setattr(self.nc, attr, value)
 
         self.nc.createDimension('time', None)
+        self.nx, self.ny = model.nx, model.ny
         time=self.nc.createVariable('time', np.dtype('float64').char, 'time')
         time.long_name = 'time'
         time.units = "days since 1900-1-1 0:0:0"
-
-        self.nx, self.ny = model.nx, model.ny
-        for dim, dimlen in zip(['nx', 'ny'], [self.nx, self.ny]):
+        for dim, dimlen in zip(['ens', 'ny', 'nx'], [dim_ens, self.ny, self.nx]):
             self.nc.createDimension(dim, dimlen)
 
-        for attr in zip(*self.getVarAttrs()):
-            varname, standard_name, long_name, dim = attr
-            var = self.nc.createVariable(varname, np.dtype('float64').char, dim)
-            var.standard_name = standard_name
-            var.long_name = long_name
+        for vartype, typename in zip(['f', 'a'], ['forecast', 'analysis']):
+            for attr in zip(*self.getVarAttrs()):
+                varname, standard_name, long_name, dim = attr
+                var = self.nc.createVariable(f'{varname}_{vartype}', np.dtype('float64').char, dim)
+                var.standard_name = standard_name + '_' + typename
+                var.long_name = typename + ' of ' + long_name
 
         self.time_count = 0
 
 
-    def write(self, step, inputData):
+    def write(self, step, typename, inputData):
         data = self.distributeData(inputData)
         self.nc['time'][self.time_count] = step
-        for i, varname in enumerate(['psi_a', 'T_a', 
-                                     'psi_o', 'T_o']):
+        for i, varname in enumerate([f'psi_a_{typename}', f'T_a_{typename}', 
+                                     f'psi_o_{typename}', f'T_o_{typename}']):
             self.nc[varname][self.time_count] = data[i]
-        self.time_count += 1
+        if int(self.nc['time'][-1]) != step:
+            self.time_count += 1
 
 
     def getVarAttrs(self):
@@ -53,16 +54,17 @@ class ObsWriter:
                            'temperature in the ocean'
                           ]
 
-        dims = [('time', 'ny', 'nx'), ('time', 'ny', 'nx'), ('time', 'ny', 'nx'), ('time', 'ny', 'nx')]
+        dims = [('time', 'ny', 'nx', 'ens'), ('time', 'ny', 'nx', 'ens'), 
+                ('time', 'ny', 'nx', 'ens'), ('time', 'ny', 'nx', 'ens')]
         return fieldnames, field_standard_name, field_long_name, dims
 
 
     def getFileAttrs(self):
         attrs = dict()
         attrs['Conventions'] = 'CF-1.8'
-        attrs['title'] = 'NetCDF output of synthetic observations from MAOOAM-pyPDAF'
+        attrs['title'] = 'NetCDF output from MAOOAM-pyPDAF'
         attrs['institution'] = 'NCEO-AWI-UoR'
-        attrs['source'] = 'pyPDAF and MAOOAM'
+        attrs['source'] = 'MAOOAM-pyPDAF'
         attrs['history'] = f'{datetime.datetime.now().isoformat(timespec="seconds")}: Data created'
         attrs['reference'] = 'https://github.com/yumengch/pyPDAF'
         return attrs
@@ -87,6 +89,3 @@ class ObsWriter:
             da[varname] = xr.DataArray(data[i],
                                          dims=dim, name=varname, attrs=attrs)
         return da
-
-    def __del__(self):
-        self.nc.close()

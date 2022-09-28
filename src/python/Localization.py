@@ -62,7 +62,7 @@ class Localization:
         # or radius for 1/e for exponential weighting 
         self.srange = config.getint('srange', 0)
 
-    def init_dim_l_pdaf(self, nx_p, mype_filter, step, domain_p, dim_l):
+    def init_dim_l_pdaf(self, model, mype_filter, step, domain_p, dim_l):
         """initialise the local dimension of PDAF.
 
         The function set coordinates of local analysis domain
@@ -71,8 +71,8 @@ class Localization:
 
         Parameters
         ----------
-        nx_p : int
-            size of PE-local state vector
+        model : Model.Model
+            model object
         mype_filter : int
             rank of the process in filter communicator
         step : int
@@ -93,9 +93,8 @@ class Localization:
         # we use grid point indices as coordinates,
         #  but could e.g. use meters
         self.coords_l = np.zeros(2)
-        offset = mype_filter*np.prod(nx_p)
-        self.coords_l[0] = domain_p + offset
-        self.coords_l[0] = np.ceil(self.coords_l[0]/nx_p[0])
+        self.coords_l[0] = model.xc.ravel()[domain_p]
+        self.coords_l[1] = model.yc.ravel()[domain_p]
         # initialize array of indices of the local state
         #  vector elements in the global state vector.
 

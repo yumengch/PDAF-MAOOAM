@@ -58,15 +58,18 @@ def init_ens_pdaf(model, filtertype, dim_p,
     status_pdaf : int
         status of PDAF
     """
-    f = xr.load_dataset('covariance.nc')
-    svals = f['sigma'].to_numpy()
+    # convert to physical space
+    psi_a, T_a, psi_o, T_o = model.toPhysical()
+    state_p[:] = np.concatenate([psi_a.ravel(), T_a.ravel(), psi_o.ravel(), T_o.ravel()])
     if dim_ens > 1:
-        eofV = np.vstack([f[varname+'_svd'][:, :dim_ens - 1].to_numpy() for varname in ['psi_a', 'T_a', 'psi_o', 'T_o']])
-        _, _, ens_p, status_pdaf = PDAF.sampleens(eofV, svals, model.field_p, verbose=1, flag=status_pdaf)
+        f = xr.load_dataset('covariance.nc')
+        svals = f['sigma'].to_numpy()[:dim_ens-1]
+        eofV = np.hstack([f[varname+'_svd'].to_numpy()[:dim_ens-1].reshape((dim_ens-1, dim_p//4)) for varname in ['psi_a', 'T_a', 'psi_o', 'T_o']])
+        _, _, ens_p, status_pdaf = PDAF.sampleens(eofV.T, svals, state_p, verbose=1, flag=status_pdaf)
     else:
         ens_p = np.zeros((dim_p, dim_ens))
-        ens_p[:, 0] = model.field_p.copy()
-    state_p = model.field_p.copy()
+        ens_p[:, 0] = state_p.copy()
+    state_p[:] = np.concatenate([psi_a.ravel(), T_a.ravel(), psi_o.ravel(), T_o.ravel()])
     return state_p, uinv, ens_p, status_pdaf
 
 
@@ -82,7 +85,8 @@ def collect_state_pdaf(model, dim_p, state_p):
     state_p : ndarray
         1D state vector on local PE
     """
-    state_p = model.field_p
+    psi_a, T_a, psi_o, T_o = model.toPhysical()
+    state_p[:] = np.concatenate([psi_a.ravel(), T_a.ravel(), psi_o.ravel(), T_o.ravel()])
     return state_p
 
 
@@ -98,7 +102,9 @@ def distribute_state_pdaf(model, dim_p, state_p):
     state_p : ndarray
         1D state vector on local PE
     """
-    model.field_p = state_p
+    size = model.nx*model.ny
+    psi_a, T_a, psi_o, T_o = (state_p[i*size:(i+1)*size].reshape(model.ny, model.nx) for i in range(4))
+    model.toFourier(psi_a, T_a, psi_o, T_o)
     return state_p
 
 

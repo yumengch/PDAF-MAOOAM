@@ -43,6 +43,6 @@ class StateVector:
         dim_ens : int
             ensemble size
         """
-        self.dim_state_p = np.prod(model.nx_p)
-        self.dim_state = np.prod(model.nx)
+        self.dim_state_p = model.nx*model.ny*4
+        self.dim_state = model.nx*model.ny*4
         self.dim_ens = dim_ens
