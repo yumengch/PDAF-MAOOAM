@@ -211,13 +211,13 @@ class Model:
         for i, b in enumerate(basis):
             self.field_p[i] = scipy.integrate.romb(
                             scipy.integrate.romb(
-                                psi_a*b(self.xc, self.yc), dx=dy
-                                ), dx=dx
+                                psi_a*b(self.xc, self.yc), dx=dx
+                                ), dx=dy
                             )
             self.field_p[i+natm] = scipy.integrate.romb(
                                 scipy.integrate.romb(
-                                    T_a*b(self.xc, self.yc), dx=dy
-                                    ), dx=dx
+                                    T_a*b(self.xc, self.yc), dx=dx
+                                    ), dx=dy
                                 )
 
 
@@ -226,13 +226,13 @@ class Model:
         for i, ti in enumerate(basis):
             self.field_p[i + 2*natm] = scipy.integrate.romb(
                             scipy.integrate.romb(
-                                psi_o*b(self.xc, self.yc), dx=dy
-                                ), dx=dx
+                                psi_o*b(self.xc, self.yc), dx=dx
+                                ), dx=dy
                             )
             self.field_p[i + 2*natm + noc] = scipy.integrate.romb(
                                 scipy.integrate.romb(
-                                    T_o*b(self.xc, self.yc), dx=dy
-                                    ), dx=dx
+                                    T_o*b(self.xc, self.yc), dx=dx
+                                    ), dx=dy
                                 )
 
         self.field_p =  self.field_p*self.model_parameters.scale_params.n/2/np.pi/np.pi
