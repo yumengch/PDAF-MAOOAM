@@ -148,10 +148,10 @@ if __name__ == '__main__':
     offsets = np.array([0, size, 2*size, 3*size])
     state = np.hstack([psi_a.reshape(nt, size), T_a.reshape(nt, size), psi_o.reshape(nt, size), T_o.reshape(nt, size)])
     state = state.T
-    print (state.shape)
     _, stddev, svals, svdU, meanstate, status = PDAF.eofcovar(dim_state, offsets, 1, 1,
                                                               state, state.mean(axis=1), 3)
     assert status == 0, 'Error in PDAF.EOFcovar'
+
     # save the covariance matrix
     svdU = svdU.T
     ds = xr.Dataset(getDataArrays(svals, svdU, nx, ny, nrank, meanstate),

@@ -168,7 +168,7 @@ contains
       use mod_model_pdaf, only: noc, natm, dim_state_p, integr
       use mod_ModelWriter_pdaf, only: write_model
 
-      include 'mpif'
+      include 'mpif.h'
 
       INTEGER, INTENT(in) :: step        !< Current time step (negative for call after forecast)
       INTEGER, INTENT(in) :: dim_p       !< PE-local state dimension
