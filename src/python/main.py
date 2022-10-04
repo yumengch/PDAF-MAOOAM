@@ -31,15 +31,6 @@ import sys
 import time
 import mpi4py.MPI
 
-def global_except_hook(exctype, value, traceback):
-    sys.stderr.write("except_hook. Calling MPI_Abort().\n")
-    # NOTE: mpi4py must be imported inside exception handler, not globally.
-    # In chainermn, mpi4py import is carefully delayed, because
-    # mpi4py automatically call MPI_Init() and cause a crash on Infiniband environment.
-    mpi4py.MPI.COMM_WORLD.Abort(1)
-    sys.__excepthook__(exctype, value, traceback)
-# sys.excepthook = global_except_hook
-
 def main():
     config = Config.PDAFConfig()
     usePDAF = config['Global'].getboolean('usePDAF', True)

@@ -65,8 +65,6 @@ class Model:
         Y = np.linspace(y0, y1, self.ny)
         self.xc, self.yc = np.meshgrid(X, Y)
         self.t0 = config.getint('spinup_steps', 0)
-        # model size for each CPU
-        self.nx_p = self.get_nx_p(pe)
         # model time steps
         self.total_steps = config.getint('total_steps', 0)
 
@@ -98,23 +96,6 @@ class Model:
         self.integrator = RungeKuttaIntegrator(num_threads=1)
         self.integrator.set_func(f)
         self.ic = np.random.rand(self.model_parameters.ndim)*0.01
-
-
-    def get_nx_p(self, pe):
-        """Compute local-PE domain size/domain decomposition
-
-        Parameters
-        ----------
-        pe : `parallelization.parallelization`
-            parallelization object
-        """
-
-        try:
-            assert pe.npes_model == 1, 'MAOOAM does not support MPI'
-            return self.nx
-        except AssertionError:
-            print((f'...ERROR: MAOOAM does not support MPI...'))
-            pe.abort_parallel()
 
 
     def init_field(self):

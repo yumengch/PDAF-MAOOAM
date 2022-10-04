@@ -48,7 +48,7 @@ def get_obs_f(obsFactory, step, dim_obs_f, observation_f):
     return observation_f
 
 
-def init_dim_obs_gen_pdafomi(obsFactory, local_range,
+def init_dim_obs_gen_pdafomi(obsFactory, local_range, model,
                              mype_filter, dim_state, 
                              dim_state_p, step, dim_obs):
     """initialise observation dimensions
@@ -76,13 +76,13 @@ def init_dim_obs_gen_pdafomi(obsFactory, local_range,
     dim_obs = 0
     for obsname, obs in obsFactory.items():
         if(obs.doassim):
-            obs.init_dim_obs_gen(step, dim_obs, local_range,
+            obs.init_dim_obs_gen(step, dim_obs, local_range, model,
                                  mype_filter, dim_state, dim_state_p)
             dim_obs += obs.dim_obs
     return dim_obs
 
 
-def init_dim_obs_pdafomi(obsFactory, local_range,
+def init_dim_obs_pdafomi(obsFactory, local_range, model,
                          mype_filter, dim_state, 
                          dim_state_p, step, dim_obs):
     """initialise observation dimensions
@@ -112,8 +112,8 @@ def init_dim_obs_pdafomi(obsFactory, local_range,
     dim_obs = 0
     for obsname, obs in obsFactory.items():
         if(obs.doassim):
-            obs.init_dim_obs(step, dim_obs, local_range,
-                             mype_filter, nx, nx_p)
+            obs.init_dim_obs(step, dim_obs, local_range, model,
+                             mype_filter, dim_state, dim_state_p)
             dim_obs += obs.dim_obs
     return dim_obs
 
@@ -160,10 +160,11 @@ def init_dim_obs_l_pdafomi(obsFactory, local,
     dim_obs_l : int
         dimension of local observation vector
     """
+    dim_obs_l = 0
     for obsname, obs in obsFactory.items():
-        obs.init_dim_obs_l(localization,
+        dim_obs_l += obs.init_dim_obs_l(local,
                            domain_p, step, dim_obs, dim_obs_l)
-
+    return dim_obs_l
 
 def localize_covar_pdafomi(obsFactory, local, model,
                            mype_filter, dim_state_p, HP_p, HPH):
@@ -188,14 +189,13 @@ def localize_covar_pdafomi(obsFactory, local, model,
     """
     dim_p = HPH.shape[0]
     coords_p = np.zeros((2, dim_p))
-    offset = mype_filter*dim_state_p
 
-    coords_p[0] = model.xc.ravel()
-    coords_p[1] = model.yc.ravel()
+    coords_p[0] = np.tile(model.xc.ravel(), 4)
+    coords_p[1] = np.tile(model.yc.ravel(), 4)
 
     for obsname, obs in obsFactory.items():
-        obs.localize_covar(localization, HP_p, HPH, coords_p)
-
+        HP_p, HPH = obs.localize_covar(local, HP_p, HPH, coords_p)
+    return HP_p, HPH
 
 def deallocate_obs_pdafomi(obsFactory):
     """deallocate PDAFomi object

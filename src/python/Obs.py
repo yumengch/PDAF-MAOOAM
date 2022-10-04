@@ -135,7 +135,7 @@ class Obs:
 
         self.time_count = 0
 
-    def init_dim_obs(self, step, dim_obs, local_range,
+    def init_dim_obs(self, step, dim_obs, local_range, model,
                      mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
@@ -170,7 +170,7 @@ class Obs:
         if self.dim_obs_p > 0:
             self.set_obs_p(obs_field_p)
             self.set_id_obs_p(obs_field_p)
-            self.set_ocoord_p(obs_field_p, pe_start)
+            self.set_ocoord_p(obs_field_p, pe_start, model)
             self.set_ivar_obs_p()
         else:
             self.obs_p = np.zeros(1)
@@ -180,7 +180,7 @@ class Obs:
 
         self.set_PDAFomi(local_range)
 
-    def init_dim_obs_gen(self, step, dim_obs, local_range,
+    def init_dim_obs_gen(self, step, dim_obs, local_range, model,
                                mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
@@ -218,7 +218,7 @@ class Obs:
         if self.dim_obs_p > 0:
             self.set_obs_p(obs_field_p)
             self.set_id_obs_p(obs_field_p)
-            self.set_ocoord_p(obs_field_p, pe_start)
+            self.set_ocoord_p(obs_field_p, pe_start, model)
             self.set_ivar_obs_p()
         else:
             self.obs_p = np.zeros(1)
@@ -254,7 +254,7 @@ class Obs:
         assert len(cnt0_p) == self.dim_obs_p, 'dim_obs_p should equal cnt0_p'
         self.id_obs_p[0, :self.dim_obs_p] = cnt0_p
 
-    def set_ocoord_p(self, obs_field_p, offset):
+    def set_ocoord_p(self, obs_field_p, offset, model):
         """set ocoord_p
 
         Parameters
@@ -265,8 +265,13 @@ class Obs:
             PE-local offset starting from rank 0
         """
         self.ocoord_p = np.zeros((self.ncoord, self.dim_obs_p))
+        nx = model.nx
+        ny = model.ny
+        dx = model.xc[0, 1] - model.xc[0, 0]
+        dy = model.yc[1, 0] - model.yc[0, 0]
         ix = np.where(obs_field_p > self.missing_value)[0]
-        self.ocoord_p[0, :self.dim_obs_p] = ix + 1 + offset
+        self.ocoord_p[1, :self.dim_obs_p] = ((ix % (nx*ny + 1) + 1) // nx)*dx
+        self.ocoord_p[0, :self.dim_obs_p] = ((ix % (nx*ny + 1) + 1) - self.ocoord_p[1, :self.dim_obs_p]*nx)
 
     def set_ivar_obs_p(self):
         """set ivar_obs_p
@@ -362,7 +367,7 @@ class Obs:
         return PDAFomi.init_dim_obs_l(self.i_obs, local.coords_l,
                                       local.loc_weight,
                                       local.local_range,
-                                      local.srange)
+                                      local.srange, dim_obs_l)
 
     def localize_covar(self, local, HP_p, HPH, coords_p):
         """localze covariance matrix
@@ -378,7 +383,7 @@ class Obs:
         coords_p : ndarray
             coordinates of state vector elements
         """
-        PDAFomi.localize_covar(self.i_obs, local.loc_weight,
+        return PDAFomi.localize_covar(self.i_obs, local.loc_weight,
                                local.local_range, local.srange,
                                coords_p, HP_p, HPH)
 

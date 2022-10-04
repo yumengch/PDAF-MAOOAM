@@ -209,6 +209,7 @@ class assimilate_pdaf:
             functools.partial(U_PDAFomi.init_dim_obs_pdafomi,
                               obs,
                               local.local_range,
+                              model,
                               pe.mype_filter,
                               sv.dim_state,
                               sv.dim_state_p)
@@ -229,16 +230,16 @@ class assimilate_pdaf:
                                   obs, local)
             status = \
                 PDAFomi.assimilate_local(U_collect_state_pdaf,
-                                              U_distribute_state_pdaf,
-                                              U_init_dim_obs_PDAFomi,
-                                              U_obs_op_PDAFomi,
-                                              U_prepoststep_ens_pdaf,
-                                              U_init_n_domains_pdaf,
-                                              U_init_dim_l_pdaf,
-                                              U_init_dim_obs_l_pdafomi,
-                                              local.g2l_state_pdaf,
-                                              local.l2g_state_pdaf,
-                                              U_next_observation_pdaf)
+                                         U_distribute_state_pdaf,
+                                         U_init_dim_obs_PDAFomi,
+                                         U_obs_op_PDAFomi,
+                                         U_prepoststep_ens_pdaf,
+                                         U_init_n_domains_pdaf,
+                                         U_init_dim_l_pdaf,
+                                         U_init_dim_obs_l_pdafomi,
+                                         local.g2l_state_pdaf,
+                                         local.l2g_state_pdaf,
+                                         U_next_observation_pdaf)
         else:
             if filtertype == 8:
                 U_localize_covar_pdafomi = \
@@ -259,6 +260,7 @@ class assimilate_pdaf:
                     functools.partial(U_PDAFomi.init_dim_obs_gen_pdafomi,
                                       obs,
                                       local.local_range,
+                                      model,
                                       pe.mype_filter,
                                       sv.dim_state,
                                       sv.dim_state_p)

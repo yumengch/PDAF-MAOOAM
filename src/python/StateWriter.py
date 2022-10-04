@@ -16,6 +16,7 @@ class StateWriter:
 
         self.nc.createDimension('time', None)
         self.nx, self.ny = model.nx, model.ny
+        self.dim_ens = dim_ens
         time=self.nc.createVariable('time', np.dtype('float64').char, 'time')
         time.long_name = 'time'
         time.units = "days since 1900-1-1 0:0:0"
@@ -72,7 +73,7 @@ class StateWriter:
 
     def distributeData(self, inputData):
         size = self.nx*self.ny
-        output = [inputData[i*size:(i+1)*size].reshape(self.ny, self.nx) for i in range(4)]
+        output = [inputData[i*size:(i+1)*size].reshape(self.ny, self.nx, self.dim_ens) for i in range(4)]
         return output
 
 

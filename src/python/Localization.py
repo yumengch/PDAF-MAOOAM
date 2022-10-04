@@ -57,10 +57,10 @@ class Localization:
         # - (4) regulated localization of R with single-point error variance
         self.loc_weight = config.getint('loc_weight', 0)
         # range for local observation domain
-        self.local_range = config.getint('local_range', 0)
+        self.local_range = config.getfloat('local_range', 0)
         # support range for 5th order polynomial
         # or radius for 1/e for exponential weighting 
-        self.srange = config.getint('srange', 0)
+        self.srange = config.getfloat('srange', 0)
 
     def init_dim_l_pdaf(self, model, mype_filter, step, domain_p, dim_l):
         """initialise the local dimension of PDAF.
@@ -93,38 +93,41 @@ class Localization:
         # we use grid point indices as coordinates,
         #  but could e.g. use meters
         self.coords_l = np.zeros(2)
-        self.coords_l[0] = model.xc.ravel()[domain_p]
-        self.coords_l[1] = model.yc.ravel()[domain_p]
+
+        self.coords_l[0] = np.tile(model.xc.ravel(), 4)[domain_p-1]
+        self.coords_l[1] = np.tile(model.yc.ravel(), 4)[domain_p-1]
         # initialize array of indices of the local state
         #  vector elements in the global state vector.
 
         # allocate array
-        self.id_lstate_in_pstate = np.zeros(dim_l)
+        self.id_lstate_in_pstate = np.zeros(dim_l, dtype=int)
 
         # here the local domain is a single grid point
         # and variable given by domain_p
-        self.id_lstate_in_pstate[0] = domain_p
+        self.id_lstate_in_pstate[0] = domain_p - 1
 
         return dim_l
 
-    def init_n_domains_pdaf(self, assim_dim, step):
+    def init_n_domains_pdaf(self, sv, step, n_domains_p):
         """get the number of analysis domains
 
         Parameters
         ----------
-        assim_dim : `AssimilationDimension.AssimilationDimension`
-            assim_dim object
+        sv : `StateVector.StateVector`
+            StateVector object
         step : int
             current time step
+        n_domains_p : int
+            PE-local number of analysis domains
 
         Returns
         -------
         n_domains_p : int
             PE-local number of analysis domains
         """
-        return assim_dim.dim_state_p
+        return sv.dim_state_p
 
-    def g2l_state_pdaf(self, step, domain_p, state_p, state_l):
+    def g2l_state_pdaf(self, step, domain_p, dim_p, state_p, dim_l, state_l):
         """convert PE-local global state vector to local state vector
 
         Parameters
@@ -133,16 +136,21 @@ class Localization:
             current time step
         domain_p : int
             local domain index
+        dim_p : int
+            dimension of PE-local state vector
         state_p : ndarray
             PE-local global state vector
+        dim_l : int
+            dimension of local state vector
         state_l : ndarray
             local state vector for local analysis
         """
         # generic initialization
         # using id_lstate_in_pstate set in init_dim_l_pdaf
         state_l = state_p[self.id_lstate_in_pstate]
+        return state_l
 
-    def l2g_state_pdaf(self, step, domain_p, state_l, state_p):
+    def l2g_state_pdaf(self, step, domain_p, dim_l, state_l, dim_p, state_p):
         """convert local state vector to PE-local global state vector
 
         Parameters
@@ -151,9 +159,14 @@ class Localization:
             current time step
         domain_p : int
             local domain index
-        state_l : ndarray
-            local state vector for local analysis
+        dim_l : int
+            dimension of local state vector
+        state_p : ndarray
+            PE-local global state vector
+        dim_p : int
+            dimension of PE-local state vector
         state_p : ndarray
             PE-local global state vector
         """
         state_p[self.id_lstate_in_pstate] = state_l
+        return state_p
