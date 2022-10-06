@@ -61,10 +61,11 @@ contains
 
    subroutine init_pdaf(screen)
       use pdaf_interfaces_module, only: PDAF_init, PDAF_get_state
-      use mod_config_pdaf, only: read_namelist
       use mod_U_pdaf, only: init_ens_pdaf, distribute_state_pdaf, next_observation_pdaf,prepoststep_ens_pdaf
       use mod_obswriter_pdaf, only: init_obs_writer
       use mod_observations_pdaf, only: initObs => init, filenames
+      use mod_StateWriter_pdaf, only: init_state_writer
+      use mod_model_pdaf, only: nx, ny, dim_ens
       integer, intent(in) :: screen
 
       integer           :: filter_param_i(7) ! Integer parameter array for filter
@@ -74,7 +75,6 @@ contains
       integer           :: steps = 0, doexit
       real(wp)          :: timenow = 0.
 
-      call read_namelist()
 
       if (filtertype == 2) then
          ! EnKF with Monte Carlo init
@@ -86,6 +86,7 @@ contains
          call setETKFOptions(filter_param_i, filter_param_r)
       endif
 
+      call init_state_writer('maooam_state.nc', nx, ny, dim_ens)
       call initObs()
       if (filtertype == 100) call init_obs_writer(filenames)
 

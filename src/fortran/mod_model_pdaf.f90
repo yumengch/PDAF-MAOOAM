@@ -33,8 +33,10 @@ integer  :: natm
 
 integer  :: total_steps
 real(wp) :: total_time
-real(wp), allocatable :: field(:, :)
-real(wp), allocatable :: field_new(:, :)
+integer :: nx, ny
+real(wp), parameter   :: pi =  3.14159265358979323846
+real(wp), allocatable :: field(:)
+real(wp), allocatable :: field_new(:)
 
 real(wp), allocatable :: psi_a(:, :)
 real(wp), allocatable :: T_a(:, :)
@@ -47,29 +49,30 @@ real(wp) :: tw
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-interface basis
-   function basis(M, H, P, nx, ny, x, y) result(res)
-      import :: wp
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x(nx, ny)
-      real(wp), intent(in) :: y(nx, ny)
+namelist /model_nml/ nx, ny
 
-      real(wp) :: res(nx, ny)
+interface basis
+   real(wp) function basis(M, H, P, x, y)
+      import :: wp
+      integer,  intent(in) :: M, H, P
+      real(wp), intent(in) :: x
+      real(wp), intent(in) :: y
    end function basis
 end interface basis
 
 contains
    subroutine initialize_model()
-
+      integer :: ndim
       print *, 'Model MAOOAM v1.4'
       print *, 'Loading information...'
       ! initialise model configurations 
       CALL maooam_model%init
+      CALL integr%init(maooam_model)
 
       natm = maooam_model%model_configuration%modes%natm
       noc = maooam_model%model_configuration%modes%noc
-      dim_state_p = maooam_model%model_configuration%modes%ndim
+      ndim = maooam_model%model_configuration%modes%ndim
+      dim_state_p = nx*ny*4
 
       total_time = maooam_model%model_configuration%integration%t_run
       dim_state = dim_state_p
@@ -78,89 +81,83 @@ contains
       writeout = maooam_model%model_configuration%integration%writeout
       tw = maooam_model%model_configuration%integration%tw
 
-      CALL integr%init(maooam_model)
 
       ! initialise the model writer
       call init_model_writer('maooam.nc', natm, noc, dim_ens)
 
       ! initialise initial condition
-      ALLOCATE(field(0:dim_state_p, 1),field_new(0:dim_state_p, 1))
-      field(0:, 1) = maooam_model%load_IC()
-
-   end subroutine initialize_model
-
-   function Fa(M, H, P, nx, ny, x, y) result(res)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x(nx, ny)
-      real(wp), intent(in) :: y(nx, ny)
-
-      real(wp) :: res(nx, ny)
-
-      res = sqrt(2.)*cos(P*y)
-   end function Fa
-
-   function Fk(M, H, P, nx, ny, x, y) result(res)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x(nx, ny)
-      real(wp), intent(in) :: y(nx, ny)
-
-      real(wp) :: res(nx, ny)
-
-      integer :: n
-      n = maooam_model%model_configuration%physics%n
-
-      res = 2*cos(M*x*n)*sin(P*y)
-   end function Fk
-
-   function Fl(M, H, P, nx, ny, x, y) result(res)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x(nx, ny)
-      real(wp), intent(in) :: y(nx, ny)
-
-      real(wp) :: res(nx, ny)
-
-      integer :: n
-      n = maooam_model%model_configuration%physics%n
-
-      res = 2*sin(H*x*n)*sin(P*y)
-   end function Fl
-
-   function phi(H, P, nx, ny, x, y) result(res)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: H, P
-      real(wp), intent(in) :: x(nx, ny)
-      real(wp), intent(in) :: y(nx, ny)
-
-      real(wp) :: res(nx, ny)
-
-      integer :: n
-      n = maooam_model%model_configuration%physics%n
-
-      res = 2*sin(0.5*H*x*n)*sin(P*y)
-   end function phi
-
-   subroutine toPhysical(nx, ny, xc, yc)
-      integer,  intent(in) :: nx, ny
-      real(wp), intent(in) :: xc(nx, ny), yc(nx, ny)
-      integer :: H, M, P
-      integer :: i
-      CHARACTER :: typ=" "
-      procedure(basis), pointer :: f => null()
+      ALLOCATE(field(0:ndim),field_new(0:ndim))
+      field = maooam_model%load_IC()
 
       ! get atmospheric components
       if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
       if (.not. allocated(T_a)) allocate(T_a(nx, ny))
+      if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
+      if (.not. allocated(T_o)) allocate(T_o(nx, ny))
+   end subroutine initialize_model
 
+   real(wp) function Fa(M, H, P, x, y)
+      integer,  intent(in) :: M, H, P
+      real(wp), intent(in) :: x
+      real(wp), intent(in) :: y
+
+      Fa = sqrt(2.)*cos(P*y)
+   end function Fa
+
+   real(wp) function Fk(M, H, P, x, y)
+      integer,  intent(in) :: M, H, P
+      real(wp), intent(in) :: x
+      real(wp), intent(in) :: y
+
+      real(wp) :: n
+      n = maooam_model%model_configuration%physics%n
+
+      Fk = 2*cos(M*x*n)*sin(P*y)
+   end function Fk
+
+   real(wp) function Fl(M, H, P, x, y)
+      integer,  intent(in) :: M, H, P
+      real(wp), intent(in) :: x
+      real(wp), intent(in) :: y
+
+      real(wp) :: n
+      n = maooam_model%model_configuration%physics%n
+
+      Fl = 2*sin(H*x*n)*sin(P*y)
+   end function Fl
+
+   real(wp) function phi(H, P, x, y)
+      integer,  intent(in) :: H, P
+      real(wp), intent(in) :: x
+      real(wp), intent(in) :: y
+
+      real(wp) :: n
+      n = maooam_model%model_configuration%physics%n
+
+      phi = 2*sin(0.5*H*x*n)*sin(P*y)
+   end function phi
+
+   subroutine toPhysical()
+
+      integer :: H, M, P
+      integer :: i, j, k
+      real(wp) :: dx, dy, n
+      CHARACTER :: typ=" "
+      procedure(basis), pointer :: f => null()
+
+      ! set up grid
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
+
+      ! get atmospheric components
       psi_a = 0.
       T_a = 0.
-      do i = 1, natm
-         H = maooam_model%inner_products%awavenum(i)%H
-         M = maooam_model%inner_products%awavenum(i)%M
-         P = maooam_model%inner_products%awavenum(i)%P
-         typ = maooam_model%inner_products%awavenum(i)%typ
+      do k = 1, natm
+         H = maooam_model%inner_products%awavenum(k)%H
+         M = maooam_model%inner_products%awavenum(k)%M
+         P = maooam_model%inner_products%awavenum(k)%P
+         typ = maooam_model%inner_products%awavenum(k)%typ
          if (typ == "A") then
             f => Fa
          else if (typ == "K") then
@@ -171,52 +168,57 @@ contains
             print *, "error in function type"
             stop
          end if
-         psi_a = psi_a + field(i, 1)*f(M, H, P, nx, ny, xc, yc)
-         T_a = T_a + field(i + natm, 1)*f(M, H, P, nx, ny, xc, yc)
+         do j = 1, ny
+            do i = 1, nx
+               psi_a(i, j) = psi_a(i, j) + field(k)*f(M, H, P, (i-1)*dx, (j-1)*dy)
+               T_a(i, j) = T_a(i, j) + field(k + natm)*f(M, H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
       end do
 
       ! get ocean components
-      if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
-      if (.not. allocated(T_o)) allocate(T_o(nx, ny))
       psi_o = 0.
       T_o = 0.
-      do i = 1, noc
-         H = maooam_model%inner_products%owavenum(i)%H
-         P = maooam_model%inner_products%owavenum(i)%P
-         psi_o = psi_o + field(i + 2*natm, 1)*phi(H, P, nx, ny, xc, yc)
-         T_o = T_o + field(i + 2*natm + noc, 1)*phi(H, P, nx, ny, xc, yc)
+      do k = 1, noc
+         H = maooam_model%inner_products%owavenum(k)%H
+         P = maooam_model%inner_products%owavenum(k)%P
+         do j = 1, ny
+            do i = 1, nx
+               psi_o(i, j) = psi_o(i, j) + field(k + 2*natm)*phi(H, P, (i-1)*dx, (j-1)*dy)
+               T_o(i, j) = T_o(i, j) + field(k + 2*natm + noc)*phi(H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
       end do
    end subroutine toPhysical
 
 
-   subroutine toFourier(nx, ny, xc, yc)
-      integer,  intent(in) :: nx, ny
-      real(wp), intent(in) :: xc(nx, ny), yc(nx, ny)
-      integer :: H, M, P, n
-      integer :: i, j
+   subroutine toFourier(nx, ny)
+      integer, intent(in) :: nx, ny
+      integer :: H, M, P
+      integer :: i, j, k
       integer :: nk(2)
-      real(wp) :: pi =  3.14159265358979323846
-      real(wp) :: dx(2)
       CHARACTER :: typ=" "
+      real(wp) :: n
+      real(wp) :: dx, dy
       real(wp) :: integrand(nx, ny)
       real(wp) :: integral(nx)
       procedure(basis), pointer :: f => null()
 
-      if (.not. allocated(field)) allocate(field(0:dim_state_p, 1))
+      ! set up grid
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
 
       ! set up numerical integration
-      nk(1) = log(real(nx, wp))/log(2.) + 1
-      nk(2) = log(real(ny, wp))/log(2.) + 1
-      n = maooam_model%model_configuration%physics%n
-      dx(1) = 2*pi/n/nx
-      dx(2) = pi/ny
+      nk(1) = int(log(real(nx, wp))/log(2.) + 1)
+      nk(2) = int(log(real(ny, wp))/log(2.) + 1)
 
       ! get atmospheric components
-      do i = 1, natm
-         H = maooam_model%inner_products%awavenum(i)%H
-         M = maooam_model%inner_products%awavenum(i)%M
-         P = maooam_model%inner_products%awavenum(i)%P
-         typ = maooam_model%inner_products%awavenum(i)%typ
+      do k = 1, natm
+         H = maooam_model%inner_products%awavenum(k)%H
+         M = maooam_model%inner_products%awavenum(k)%M
+         P = maooam_model%inner_products%awavenum(k)%P
+         typ = maooam_model%inner_products%awavenum(k)%typ
          if (typ == "A") then
             f => Fa
          else if (typ == "K") then
@@ -227,42 +229,65 @@ contains
             print *, "error in function type"
             stop
          end if
-
-         integrand = psi_a*f(M, H, P, nx, ny, xc, yc)
+         do j = 1, ny
+            do i = 1, nx
+               integrand(i, j) = psi_a(i, j)*f(M, H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
+         
          do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dx(2))
+            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
          end do
-         field(i, 1) = romb(nx, nk(1), integral, dx(1))
+         field(k) = romb(nx, nk(1), integral, dx)
 
-         integrand = T_a*f(M, H, P, nx, ny, xc, yc)
+         do j = 1, ny
+            do i = 1, nx
+               integrand(i, j) = T_a(i, j)*f(M, H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
+
          do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dx(2))
+            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
          end do
-         field(i+natm, 1) = romb(nx, nk(1), integral, dx(1))
+         field(k+natm) = romb(nx, nk(1), integral, dx)
       end do
 
       ! get ocean components
-      do i = 1, noc
-         H = maooam_model%inner_products%owavenum(i)%H
-         P = maooam_model%inner_products%owavenum(i)%P
+      do k = 1, noc
+         H = maooam_model%inner_products%owavenum(k)%H
+         P = maooam_model%inner_products%owavenum(k)%P
 
-         integrand = psi_o*phi(H, P, nx, ny, xc, yc)
+         do j = 1, ny
+            do i = 1, nx
+               integrand(i, j) = psi_o(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
          do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dx(2))
+            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
          end do
-         field(i + 2*natm, 1) = romb(nx, nk(1), integral, dx(1))
+         field(k + 2*natm) = romb(nx, nk(1), integral, dx)
 
-         integrand = T_o*phi(H, P, nx, ny, xc, yc)
+         do j = 1, ny
+            do i = 1, nx
+               integrand(i, j) = T_o(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
+            enddo
+         enddo
+
          do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dx(2))
+            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
          end do
-         field(i + 2*natm + noc, 1) = romb(nx, nk(1), integral, dx(1))
+         field(k + 2*natm + noc) = romb(nx, nk(1), integral, dx)
       end do
+
+      field(1:) =  field(1:)*n/2/pi/pi
    end subroutine toFourier
 
 
    subroutine finalize_model
-
+      if (allocated(psi_a)) deallocate(psi_a)
+      if (allocated(T_a)) deallocate(T_a)
+      if (allocated(psi_o)) deallocate(psi_o)
+      if (allocated(T_o)) deallocate(T_o)
       DEALLOCATE(field, field_new)
       CALL maooam_model%clean
       CALL integr%clean

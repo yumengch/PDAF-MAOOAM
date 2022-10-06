@@ -6,7 +6,7 @@
 !  Number of blocs
 &NUMBLOCS
   NBOC = 8         !  Number of oceanic blocs
-  NBATM = 36       !  Number of atmospheric blocs
+  NBATM = 4      !  Number of atmospheric blocs
 &END
 
 !  Mode selection parameters
@@ -24,40 +24,9 @@
   ! Atmospheric blocs
   AMS(1,:) = 1,1
   AMS(2,:) = 1,2
-  AMS(3,:) = 1,3
-  AMS(4,:) = 1,4
-  AMS(5,:) = 1,5
-  AMS(6,:) = 1,6
-  AMS(7,:)  = 2,1
-  AMS(8,:)  = 2,2
-  AMS(9,:)  = 2,3
-  AMS(10,:) = 2,4
-  AMS(11,:) = 2,5
-  AMS(12,:) = 2,6
-  AMS(13, :) = 3, 1
-  AMS(14, :) = 3, 2
-  AMS(15, :) = 3, 3
-  AMS(16, :) = 3, 4
-  AMS(17, :) = 3, 5
-  AMS(18, :) = 3, 6
-  AMS(19, :) = 4, 1
-  AMS(20, :) = 4, 2
-  AMS(21, :) = 4, 3
-  AMS(22, :) = 4, 4
-  AMS(23, :) = 4, 5
-  AMS(24, :) = 4, 6
-  AMS(25, :) = 5, 1
-  AMS(26, :) = 5, 2
-  AMS(27, :) = 5, 3
-  AMS(28, :) = 5, 4
-  AMS(29, :) = 5, 5
-  AMS(30, :) = 5, 6
-  AMS(31, :) = 6, 1
-  AMS(32, :) = 6, 2
-  AMS(33, :) = 6, 3
-  AMS(34, :) = 6, 4
-  AMS(35, :) = 6, 5
-  AMS(36, :) = 6, 6
+  AMS(3,:) = 2,1
+  AMS(4,:) = 2,2
+
 &END
 
 ! End of mode selection Namelist

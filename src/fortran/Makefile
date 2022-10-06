@@ -1,8 +1,8 @@
-INCS=-I/usr/include -I/home/yumengch/NCEO/MAOOAM/PDAF_V2.0/include
-LIBNC=-L/usr/lib/x86_64-linux-gnu -lnetcdff -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -lnetcdf -lnetcdf -ldl -lm
-LIBPDAF=-L/home/yumengch/NCEO/MAOOAM/PDAF_V2.0/lib -lpdaf-d
+INCS=-I/usr/include -I$(HOME)/NCEO/MAOOAM/PDAF_V2.0/include # -I/home/users/ia923171/spack/opt/spack/linux-centos7-x86_64/gcc-7.3.0/netcdf-fortran-4.5.4-arvaui536gqcge2mjsqpngr4dxzxeyxj/include
+LIBNC=-L/usr/lib/x86_64-linux-gnu -lnetcdff -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -lnetcdf -lnetcdf -ldl -lm # -L/home/users/ia923171/spack/opt/spack/linux-centos7-x86_64/gcc-7.3.0/netcdf-fortran-4.5.4-arvaui536gqcge2mjsqpngr4dxzxeyxj/lib -lnetcdff -lnetcdf -lnetcdf
+LIBPDAF=-L$(HOME)/NCEO/MAOOAM/PDAF_V2.0/lib -lpdaf-d
 # Define relevant compiler options for debug case and normal case for each compiler
-COMPILER_FLAGS = $(INCS) -O3 -cpp # -fcheck=all -Wall -Wextra -Wconversion -pedantic -ffpe-trap=zero,overflow,underflow -fsanitize=address -cpp
+COMPILER_FLAGS = $(INCS) -O0 -g -cpp -fcheck=all -Wall -Wextra -Wconversion -pedantic -Wno-unused-parameter -ffpe-trap=zero,overflow,underflow -cpp
 LD_FLAGS = $(LIBNC) $(LIBPDAF)  -L/usr/lib  -llapack -lblas
 
 FC=mpif90
@@ -36,6 +36,7 @@ PDAF_OBJECTS = mod_kind_pdaf.o \
 		  mod_parallel_pdaf.o \
 		  mod_filteroptions_pdaf.o \
 		  mod_inflation_pdaf.o \
+		  mod_statewriter_pdaf.o \
 		  mod_modelwriter_pdaf.o \
 		  mod_model_pdaf.o \
 		  mod_localization_pdaf.o \

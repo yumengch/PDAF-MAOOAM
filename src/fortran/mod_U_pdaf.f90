@@ -30,7 +30,8 @@ logical :: firsttime = .true.
 contains
    subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       use netcdf
-      use mod_model_pdaf, only: field, natm, noc
+      USE mod_model_pdaf, &             ! Model variables
+         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical
       use pdaf_interfaces_module, only: PDAF_sampleens
       implicit none
       ! type of filter to initialize
@@ -50,7 +51,7 @@ contains
 
       ! local variables
       integer :: ncid, dimid, varid
-      integer :: i
+      integer :: i, j
       integer :: ierr
       integer :: rank
       real(wp), allocatable :: eofV(:, :)
@@ -69,23 +70,24 @@ contains
 
       allocate(eofV(dim_ens - 1, dim_p))
 
-      state_p = field(1:, 1)
+      call toPhysical()
+      state_p(:nx*ny) = reshape(psi_a, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
+      state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
+      state_p(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
 
       if (dim_ens > 1) then
-         do i = 1, 2
-            ierr = nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid)
-            ierr = nf90_get_var(ncid, varid, eofV(:, (i-1)*natm + 1:i*natm), start=[1, 1], count=[dim_ens - 1, natm])
-         end do
-         do i = 1, 2
-            ierr = nf90_inq_varid(ncid, trim(varname(i + 2))//'_svd', varid)
-            ierr = nf90_get_var(ncid, varid, eofV(:, 2*natm+(i-1)*noc + 1:2*natm+i*noc), start=[1, 1], count=[dim_ens - 1, noc])
+         do j = 1, dim_ens - 1
+            do i = 1, 4
+               ierr = nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid)
+               ierr = nf90_get_var(ncid, varid, eofV(j, (i-1)*nx*ny+1:i*nx*ny), start=[1, 1, 1], count=[nx, ny, 1])
+            end do
          end do
 
          call PDAF_sampleens(dim_p, dim_ens, eofV, svals, state_p, ens_p, verbose=1, flag=status_pdaf)
       else
-         ens_p(:, 1) = field(1:, 1)
+         ens_p(:, 1) = state_p
       end if
-
       ierr = nf90_close(ncid)
       deallocate(eofV, svals)
    end subroutine init_ens_pdaf
@@ -129,24 +131,35 @@ contains
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: field
+         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier, toPhysical, field, natm, noc
 
       IMPLICIT NONE
 
       ! *** Arguments ***
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
+
+      real(wp), allocatable :: field_tmp(:)
       ! *************************************************
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
       !**************************************************
-      field(1:, 1) = state_p
+      allocate(field_tmp(2*natm+2*noc))
+      field_tmp(:) = field(1:)
+      psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
+      T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
+      psi_o = reshape(state_p(2*nx*ny+1:3*nx*ny), [nx, ny])
+      T_o   = reshape(state_p(3*nx*ny+1:4*nx*ny), [nx, ny])
+      call toFourier(nx, ny)
+
+      print *, 'diff', maxval(abs(field_tmp - field(1:)))
+      deallocate(field_tmp)
    END SUBROUTINE distribute_state_pdaf
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
 
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: field
+         ONLY: psi_a, T_a, psi_o, T_o, toPhysical, nx, ny, field
 
       IMPLICIT NONE
 
@@ -154,19 +167,26 @@ contains
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
 
+
       ! *************************************************
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
       ! *************************************************
-      state_p = field(1:, 1)
+
+      call toPhysical()
+      state_p(:nx*ny) = reshape(psi_a, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
+      state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
+      state_p(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
+
    END SUBROUTINE collect_state_pdaf
 
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
                                    dim_obs_p, state_p, uinv, ens_p, flag)
-      use mod_parallel_pdaf, only: mype_world, mype_filter, comm_filter, &
+      use mod_parallel_pdaf, only: mype_filter, comm_filter, &
                                    npes_filter, MPIerr, MPIstatus
-      use mod_model_pdaf, only: noc, natm, dim_state_p, integr
-      use mod_ModelWriter_pdaf, only: write_model
+      use mod_model_pdaf, only: nx, ny, dim_state_p, integr
+      use mod_StateWriter_pdaf, only: write_state
 
       include 'mpif.h'
 
@@ -240,10 +260,10 @@ contains
 
       if (step <= 0) then
          print *, '---writing ensemble forecast---'
-         call write_model(-step*integr%dt, 'f', ens_p, natm, noc, dim_ens)
+         call write_state(-step*integr%dt, 'f', ens_p, nx, ny, dim_ens)
       else
          print *, '---writing ensemble analysis---'
-         call write_model(step*integr%dt, 'a', ens_p, natm, noc, dim_ens)
+         call write_state(step*integr%dt, 'a', ens_p, nx, ny, dim_ens)
       endif
 
       firsttime = .false.

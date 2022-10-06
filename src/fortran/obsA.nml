@@ -1,11 +1,11 @@
 &setup_nml
 obsname = 'A'
-filename = 'A.nc'
+filename = 'MAOOAM_ObsA.nc'
 doassim = 1
 delt_obs = 2
 rms_obs = 1.
 disttype = 0
-ncoord = 1
+ncoord = 2
 nrows = 1
 obs_err_type = 0
 use_global_obs = 1

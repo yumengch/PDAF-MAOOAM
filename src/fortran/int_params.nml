@@ -5,9 +5,9 @@
 
 ! Time parameters
 &INT_PARAMS
-  T_TRANS = 1.D4       !  transient period (e.g. 1.D7)
-  T_RUN = 3.5D6          !  length of trajectory on the attractor (e.g. 5.D8)
-  DT = 0.1             !  the time step
+  T_TRANS = 0.2       !  transient period (e.g. 1.D7)
+  T_RUN = 0.1 ! 3.5D6          !  length of trajectory on the attractor (e.g. 5.D8)
+  DT = 1.D-1             !  the time step
   WRITEOUT = .true.    !  write out all variables every tw time units, and snapshots every tw_snap time units during the transient period
   TW = 3.D4            !
   TW_SNAP = 3.D4       !

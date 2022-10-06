@@ -1,6 +1,6 @@
 module mod_ObsWriter_pdaf
 use mod_kind_pdaf, only: wp
-use mod_model_pdaf, only: natm, noc, dim_ens
+use mod_model_pdaf, only: nx, ny, dim_ens
 use mod_observations_pdaf, only: n_obs
 use netcdf
 implicit none
@@ -17,7 +17,7 @@ contains
       integer :: ierr
       integer :: j
       integer :: i_obs
-      integer :: dimids(4, 2)
+      integer :: dimids(4, 3)
 
       character(len=5)  :: varname(4)
       character(len=40) :: standard_name(4)
@@ -37,11 +37,11 @@ contains
          ierr = nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) )
          ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' )
          ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'units', 'days since 1900-1-1 0:0:0' )
-         ierr = nf90_def_dim( ncid(i_obs), 'natm', natm, dimid(i_obs, 2) )
-         ierr = nf90_def_dim( ncid(i_obs), 'noc', noc, dimid(i_obs, 3) )
+         ierr = nf90_def_dim( ncid(i_obs), 'nx', nx, dimid(i_obs, 2) )
+         ierr = nf90_def_dim( ncid(i_obs), 'ny', ny, dimid(i_obs, 3) )
          ! initialise output variables
          call getVarAttrs(i_obs, varname, standard_name, long_name, dimids)
-         print *, varname
+
          do j = 1, 4
             ierr = nf90_def_var(ncid(i_obs), trim(varname(j)), nf90_double, dimids(j, :), varid(i_obs, j))
             ierr = nf90_put_att(ncid(i_obs), varid(i_obs, j), 'standard_name', trim(standard_name(j)))
@@ -81,27 +81,27 @@ contains
 
    subroutine getVarAttrs(i_obs, fieldnames, standard_name, long_name, dims)
       integer, intent(in)  :: i_obs
-      integer, intent(out) :: dims(4, 2)
+      integer, intent(out) :: dims(4, 3)
       character(len=5), intent(out) :: fieldnames(4)
       character(len=40), intent(out) :: standard_name(4)
       character(len=50), intent(out) :: long_name(4)
 
       fieldnames = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
-      standard_name = [character(len=40):: 'atmosphere_streamfunction_coefficient', &
-                       'atmosphere_temperature_coefficient', &
-                       'ocean_streamfunction_coefficient', &
-                       'ocean_temperature_coefficient' &
+      standard_name = [character(len=40):: 'atmosphere_streamfunction', &
+                       'atmosphere_temperature', &
+                       'ocean_streamfunction', &
+                       'ocean_temperature' &
                        ]
-      long_name = [character(len=50) :: 'coefficient of streamfunction in the atmosphere', &
-                   'coefficient of temperature in the atmosphere', &
-                   'coefficient of streamfunction in the ocean', &
-                   'coefficient of temperature in the ocean' &
+      long_name = [character(len=50) :: 'streamfunction in the atmosphere', &
+                   'temperature in the atmosphere', &
+                   'streamfunction in the ocean', &
+                   'temperature in the ocean' &
                    ]
 
-      dims = reshape([dimid(i_obs, 2),dimid(i_obs, 1), &
-              dimid(i_obs, 2),dimid(i_obs, 1), &
-              dimid(i_obs, 3),dimid(i_obs, 1), &
-              dimid(i_obs, 3),dimid(i_obs, 1)], shape(dims), order=[2, 1])
+      dims = reshape([dimid(i_obs, 2),dimid(i_obs, 3), dimid(i_obs, 1), &
+              dimid(i_obs, 2),dimid(i_obs, 3), dimid(i_obs, 1), &
+              dimid(i_obs, 2),dimid(i_obs, 3), dimid(i_obs, 1), &
+              dimid(i_obs, 2),dimid(i_obs, 3), dimid(i_obs, 1)], shape(dims), order=[2, 1])
    end subroutine getVarAttrs
 
    subroutine writeObs(i_obs, step, inputData)
@@ -109,8 +109,6 @@ contains
       integer, intent(in) :: step
       real(wp), intent(in) :: inputData(:)
 
-      integer :: offsets(5)
-      integer :: dims(4)
       integer :: i, ierr
 
       time_count(i_obs) = time_count(i_obs) + 1
@@ -118,14 +116,11 @@ contains
                           [real(step, wp)], &
                           start=[time_count(i_obs)], count=[1])
 
-      offsets = [0, natm, 2*natm, 2*natm + noc, 2*(natm + noc)]
-      dims = [natm, natm, noc, noc]
       do i = 1, 4
-
          ierr = nf90_put_var(ncid(i_obs), varid(i_obs, i), &
-                             inputData(offsets(i)+1:offsets(i+1)), &
-                             start=[1, time_count(i_obs)], &
-                             count=[dims(i), 1] &
+                             inputData((i-1)*nx*ny + 1: i*nx*ny), &
+                             start=[1, 1, time_count(i_obs)], &
+                             count=[nx, ny, 1] &
                              )
       end do
    end subroutine writeObs

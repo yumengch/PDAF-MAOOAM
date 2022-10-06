@@ -11,16 +11,18 @@ contains
 
       integer :: Nsamps, Ninterv
       integer :: start, step, limit
-      integer :: n = 1
-      integer :: k = 0
+      integer :: n
+      integer :: k
       integer :: i, j
       real(wp) :: h
       real(wp) :: prev
       real(wp) :: R(0:nk, 0:nk)
 
+
       Nsamps = nx
       Ninterv = Nsamps-1
-
+      n = 1
+      k = 0
       do while (n < Ninterv)
           n = n * 2
           k = k + 1

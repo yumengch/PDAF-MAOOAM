@@ -1,7 +1,3 @@
-[Global]
-usePDAF = True
-screen = 0
-
 &ens_nml
   dim_ens = 1
   n_modeltasks = 1
@@ -29,4 +25,8 @@ forget = 1
  loc_weight=0
  local_range=0
  srange=0
+/
+&model_nml
+ ny = 17
+ nx = 9
 /

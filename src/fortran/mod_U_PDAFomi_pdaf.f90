@@ -125,11 +125,9 @@ contains
    END SUBROUTINE init_dim_obs_l_pdafomi
 
    SUBROUTINE localize_covar_pdafomi(dim_p, dim_obs, HP_p, HPH)
-
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
       ! Include functions for different observations
       USE mod_observations_pdaf, ONLY: localize_covar
-      USE mod_model_pdaf, &          ! Include information on model grid
-          ONLY: dim_state_p
       USE mod_parallel_pdaf, &  ! Include rank of filter process
           ONLY: mype_filter
 
@@ -142,10 +140,10 @@ contains
       REAL(wp), INTENT(inout) :: HPH(dim_obs, dim_obs) !< Matrix HPH
 
       ! *** local variables ***
-      INTEGER :: i_obs, j, cnt_p         ! Counters
-      INTEGER :: off_nx                  ! Offset in x-direction for parallelization
+      INTEGER :: i_obs, i, j, k, cnt_p         ! Counters
       REAL(wp), ALLOCATABLE :: coords_p(:,:) ! Coordinates of PE-local state vector entries
-
+      real(wp) :: dx, dy
+      real(wp) :: n
 
       ! **********************
       ! *** INITIALIZATION ***
@@ -153,19 +151,22 @@ contains
 
       ! *** Initialize coordinate array ***
 
-      ALLOCATE(coords_p(1, dim_p))
+      ALLOCATE(coords_p(2, dim_p))
 
       ! Get offset of local domain in global domain in x-direction
-      off_nx = 0
-      DO j = 1, mype_filter
-         off_nx = off_nx + dim_state_p
-      END DO
-
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
       cnt_p = 0
-      DO j = 1 + off_nx, dim_state_p + off_nx
-         cnt_p = cnt_p + 1
-         coords_p(1, cnt_p) = REAL(j)
-      END DO
+      do k = 1, 4
+         DO j = 1, ny
+            do i = 1, nx
+               cnt_p = cnt_p + 1
+               coords_p(1, cnt_p) = i*dx
+               coords_p(2, cnt_p) = j*dy
+            end do
+         END DO
+      end do
 
 
       ! *************************************

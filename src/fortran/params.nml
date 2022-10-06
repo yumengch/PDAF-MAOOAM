@@ -25,7 +25,7 @@
 &APARAMS
   K = 0.029D0         !  atmosphere bottom friction coefficient
   KP = 0.029D0        !  atmosphere internal friction coefficient
-  SIG0 = 0.1D0       !  static stability of the atmosphere
+  SIG0 = 0.2D0       !  static stability of the atmosphere
   NUA = 0.D0         !  dissipation in the atmosphere
 &END
 

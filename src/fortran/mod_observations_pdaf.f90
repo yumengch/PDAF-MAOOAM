@@ -58,7 +58,7 @@ contains
    end subroutine init
 
    subroutine init_single_obs(i_obs, nmlname)
-      use mod_model_pdaf, only: dim_state
+      use mod_model_pdaf, only: pi, maooam_model
       use mod_parallel_pdaf, only: mype_filter
       integer, intent(in) :: i_obs
       character(*), intent(in) :: nmlname
@@ -95,7 +95,8 @@ contains
       ! Size of domain for periodicity for disttype=1
       ! (<0 for no periodicity)
       allocate(thisobs(i_obs)%domainsize(ncoord))
-      thisobs(i_obs)%domainsize(1) = dim_state
+      thisobs(i_obs)%domainsize(1) = 2*pi/ maooam_model%model_configuration%physics%n
+      thisobs(i_obs)%domainsize(2) = pi
       missing_value(i_obs) = -999
       time_count(i_obs) = 0
    end subroutine init_single_obs
@@ -237,6 +238,7 @@ contains
    end subroutine set_obs_p
 
    subroutine set_id_obs_p(i_obs, obs_field_p, id_obs_p)
+            use mod_model_pdaf, only: nx, ny
       integer,  intent(in)    :: i_obs
       real(wp), intent(in)    :: obs_field_p(:)
       integer,  intent(inout) :: id_obs_p(:, :)
@@ -256,6 +258,7 @@ contains
    end subroutine set_id_obs_p
 
    subroutine set_ocoord_p(i_obs, offset, obs_field_p, ocoord_p)
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
       integer,  intent(in)    :: i_obs
       integer,  intent(in)    :: offset
       real(wp), intent(in)    :: obs_field_p(:)
@@ -264,19 +267,26 @@ contains
       integer :: cnt
       integer :: i
       integer :: dim_p
+      real(wp) :: n
+      real(wp) :: dx, dy
 
       cnt = 1
       dim_p = size(obs_field_p)
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
       do i = 1, dim_p
          if (obs_field_p(i) > missing_value(i_obs)) then
-            ocoord_p(1, cnt) = i + offset
+            ocoord_p(2, cnt) = int((mod(i-1, nx*ny)) / nx)
+            ocoord_p(1, cnt) = (int(mod(i-1, nx*ny) -  ocoord_p(2, cnt)*nx))*dx
+            ocoord_p(2, cnt) = ocoord_p(2, cnt)*dy
             cnt = cnt + 1
          end if
       end do
    end subroutine set_ocoord_p
 
    subroutine get_obs_field(i_obs, filename, obs_field)
-      use mod_model_pdaf, only: natm, noc
+      use mod_model_pdaf, only: nx, ny
       use netcdf
       integer,      intent(in)    :: i_obs
       character(*), intent(in)    :: filename
@@ -285,21 +295,17 @@ contains
       integer :: ncid, varid
       integer :: ierr
       integer :: i
-      integer :: offsets(5)
-      integer :: dimsize(4)
       character(len=5) :: varname(4)
 
       time_count(i_obs) = time_count(i_obs) + 1
       ierr = nf90_open(filename, nf90_nowrite, ncid)
 
       varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
-      offsets = [0, natm, 2*natm, 2*natm + noc, 2*(natm + noc)]
-      dimsize = [natm, natm, noc, noc]
       do i = 1, 4
          ierr = nf90_inq_varid(ncid, trim(varname(i)), varid)
          ierr = nf90_get_var(ncid, varid, &
-                             obs_field(offsets(i)+1:offsets(i+1)), &
-                             start=[1, time_count(i_obs)], count=[dimsize(i), 1])
+                             obs_field((i-1)*nx*ny + 1: i*nx*ny), &
+                             start=[1, 1, time_count(i_obs)], count=[nx, ny, 1])
       end do
       ierr = nf90_close(ncid)
    end subroutine get_obs_field

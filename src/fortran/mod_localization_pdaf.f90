@@ -24,12 +24,12 @@ integer :: loc_weight
 real(wp) :: local_range
 real(wp) :: srange
 integer, allocatable :: id_lstate_in_pstate(:)
-real(wp) :: coords_l(1)
+real(wp) :: coords_l(2)
 namelist /local_nml/ loc_weight, local_range, srange
 contains
    SUBROUTINE init_dim_l_pdaf(step, domain_p, dim_l)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: dim_state_p
+         ONLY: dim_state_p, nx, ny, pi, maooam_model
       USE mod_parallel_pdaf, &     ! assimilation parallelization variables
          ONLY: mype_filter
 
@@ -43,14 +43,14 @@ contains
       ! *** local variables ***
       INTEGER :: i                       ! Counters
       INTEGER :: off_p                   ! Process-local offset in global state vector
-
+      real(wp) :: n
+      real(wp) :: dx, dy
 
       ! ****************************************
       ! *** Initialize local state dimension ***
       ! ****************************************
 
       dim_l = 1
-
 
       ! **********************************************
       ! *** Initialize coordinates of local domain ***
@@ -62,8 +62,12 @@ contains
       DO i = 1, mype_filter
          off_p = off_p + dim_state_p
       END DO
-      coords_l(1) = REAL(CEILING(REAL(domain_p+off_p)))
-
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
+      coords_l(2) = int((mod(domain_p - 1, nx*ny)) / nx)
+      coords_l(1) = (int(mod(domain_p - 1, nx*ny) -  coords_l(2)*nx))*dx
+      coords_l(2) = coords_l(2)*dy
       ! ******************************************************
       ! *** Initialize array of indices of the local state ***
       ! ***  vector elements in the global state vector.   ***
