@@ -95,7 +95,7 @@ class Model:
         # Defining an integrator
         self.integrator = RungeKuttaIntegrator(num_threads=1)
         self.integrator.set_func(f)
-        self.ic = np.random.rand(self.model_parameters.ndim)*0.01
+        self.ic = np.zeros(self.model_parameters.ndim)# np.random.rand(self.model_parameters.ndim)*0.01
 
 
     def init_field(self):
@@ -125,13 +125,13 @@ class Model:
             whether PDAF is used
         """
         dt = self.dt
-        self.integrator.integrate((self.t0 + step - 1)*dt, (self.t0 + step)*dt, dt, ic=self.field_p, write_steps=0)
+        self.integrator.integrate((self.t0 + step)*dt, (self.t0 + step + 1)*dt, dt, ic=self.field_p, write_steps=0)
         t, self.field_p = self.integrator.get_trajectories()
         if usePDAF:
             return
 
         if pe.task_id == 1:
-            np.savetxt(f'true_step{step}.txt', field)
+            np.savetxt(f'true_step{step}.txt', self.field_p)
 
 
     def printInfo(self, usePDAF, pe):

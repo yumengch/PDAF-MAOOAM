@@ -270,8 +270,10 @@ class Obs:
         dx = model.xc[0, 1] - model.xc[0, 0]
         dy = model.yc[1, 0] - model.yc[0, 0]
         ix = np.where(obs_field_p > self.missing_value)[0]
-        self.ocoord_p[1, :self.dim_obs_p] = ((ix % (nx*ny + 1) + 1) // nx)*dx
-        self.ocoord_p[0, :self.dim_obs_p] = ((ix % (nx*ny + 1) + 1) - self.ocoord_p[1, :self.dim_obs_p]*nx)
+        self.ocoord_p[1, :self.dim_obs_p] = (ix % (nx*ny)) // nx
+        self.ocoord_p[0, :self.dim_obs_p] = (ix % (nx*ny)) - self.ocoord_p[1, :self.dim_obs_p]*nx
+        self.ocoord_p[0, :self.dim_obs_p] *= dx
+        self.ocoord_p[1, :self.dim_obs_p] *= dy
 
     def set_ivar_obs_p(self):
         """set ivar_obs_p

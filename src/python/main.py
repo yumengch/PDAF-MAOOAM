@@ -36,8 +36,7 @@ def main():
     usePDAF = config['Global'].getboolean('usePDAF', True)
     screen = config['Global'].getint('screen', 3)
 
-    if usePDAF:
-        pe = parallelization(config['Ensemble'], screen=screen)
+    pe = parallelization(config['Ensemble'], screen=screen)
 
     # Initial Screen output
     if (pe.mype_world == 0):
