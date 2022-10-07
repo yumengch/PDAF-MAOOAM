@@ -139,21 +139,15 @@ contains
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
 
-      real(wp), allocatable :: field_tmp(:)
       ! *************************************************
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
       !**************************************************
-      allocate(field_tmp(2*natm+2*noc))
-      field_tmp(:) = field(1:)
       psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
       T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
       psi_o = reshape(state_p(2*nx*ny+1:3*nx*ny), [nx, ny])
       T_o   = reshape(state_p(3*nx*ny+1:4*nx*ny), [nx, ny])
       call toFourier(nx, ny)
-
-      print *, 'diff', maxval(abs(field_tmp - field(1:)))
-      deallocate(field_tmp)
    END SUBROUTINE distribute_state_pdaf
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
@@ -172,7 +166,6 @@ contains
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
       ! *************************************************
-
       call toPhysical()
       state_p(:nx*ny) = reshape(psi_a, [nx*ny])
       state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])

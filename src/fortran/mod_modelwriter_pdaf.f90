@@ -1,17 +1,17 @@
 module mod_ModelWriter_pdaf
 use mod_kind_pdaf, only: wp
+use mod_parallel_pdaf, only: task_id
 use netcdf
 implicit none
 
 integer :: time_count = 0
-integer :: ncid
-integer :: dimid(4)
-integer :: varid_time
-integer :: varid(8)
+integer, allocatable :: ncid(:)
+integer, allocatable :: dimid(:, :)
+integer, allocatable :: varid_time(:)
+integer, allocatable :: varid(:, :)
 
 contains
-   subroutine init_model_writer(filename, natm, noc, dim_ens)
-      character(*), intent(in) :: filename
+   subroutine init_model_writer(natm, noc, dim_ens)
       integer, intent(in)      :: natm, noc, dim_ens
 
       integer :: ierr
@@ -24,24 +24,27 @@ contains
       character(len=40) :: standard_name(4)
       character(len=50) :: long_name(4)
 
-      ierr = nf90_create(filename, nf90_netcdf4, ncid)
+
+      allocate(ncid(dim_ens), dimid(dim_ens, 4), varid_time(dim_ens), varid(dim_ens, 8))
+
+      ierr = nf90_create('maooam'//_str(task_id)//'.nc', nf90_netcdf4, ncid(task_id))
       ! set global attributes
       call setAttrs
       ! initialise dimensions
-      ierr = nf90_def_dim( ncid, 'time', nf90_unlimited, dimid(1) )
-      ierr = nf90_def_var( ncid, 'time', nf90_double, dimid(1), varid_time )
-      ierr = nf90_put_att( ncid, varid_time, 'long_name', 'time' )
-      ierr = nf90_put_att( ncid, varid_time, 'units', 'seconds since 1900-1-1 0:0:0' )
-      ierr = nf90_def_dim( ncid, 'ens', dim_ens, dimid(2) )
-      ierr = nf90_def_dim( ncid, 'natm', natm, dimid(3) )
-      ierr = nf90_def_dim( ncid, 'noc', noc, dimid(4) )
+      ierr = nf90_def_dim( ncid(task_id), 'time', nf90_unlimited, dimid(task_id, 1) )
+      ierr = nf90_def_var( ncid(task_id), 'time', nf90_double, dimid(task_id, 1), varid_time(task_id) )
+      ierr = nf90_put_att( ncid(task_id), varid_time, 'long_name', 'time' )
+      ierr = nf90_put_att( ncid(task_id), varid_time, 'units', 'seconds since 1900-1-1 0:0:0' )
+      ierr = nf90_def_dim( ncid(task_id), 'ens', dim_ens, dimid(task_id, 2) )
+      ierr = nf90_def_dim( ncid(task_id), 'natm', natm, dimid(task_id, 3) )
+      ierr = nf90_def_dim( ncid(task_id), 'noc', noc, dimid(task_id, 4) )
       ! initialise output variables
       call getVarAttrs(varname, standard_name, long_name, dimids)
       do i = 1, 2
          do j = 1, 4
-            ierr = nf90_def_var(ncid, trim(varname(j))//'_'//vartype(i), nf90_double, dimids(j, :), varid((i-1)*4+j))
-            ierr = nf90_put_att(ncid, varid((i-1)*4+j), 'standard_name', trim(standard_name(j))//'_'//trim(typename(i)))
-            ierr = nf90_put_att(ncid, varid((i-1)*4+j), 'long_name', trim(typename(i))//' of '//trim(long_name(j)))
+            ierr = nf90_def_var(ncid(task_id), trim(varname(j))//'_'//vartype(i), nf90_double, dimids(j, :), varid(task_id, (i-1)*4+j))
+            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), 'standard_name', trim(standard_name(j))//'_'//trim(typename(i)))
+            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), 'long_name', trim(typename(i))//' of '//trim(long_name(j)))
          end do
       end do
       ierr = NF90_ENDDEF(ncid)
@@ -49,14 +52,14 @@ contains
 
    subroutine setAttrs()
       integer :: ierr
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'Conventions', 'CF-1.8')
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'title', &
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'Conventions', 'CF-1.8')
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'title', &
       'NetCDF output from MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'institution', &
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'institution', &
       'NCEO-AWI-UoR')
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'history', iso8601()//': Data created')
-      ierr = nf90_put_att(ncid,  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF')
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF')
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'history', iso8601()//': Data created')
+      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF')
    end subroutine setAttrs
 
    subroutine getVarAttrs(fieldnames, standard_name, long_name, dims)
@@ -109,7 +112,7 @@ contains
       integer :: i0
 
       time_count = time_count + 1
-      ierr = nf90_put_var(ncid, varid_time, [step], start=[time_count], count=[1])
+      ierr = nf90_put_var(ncid(task_id), varid_time(task_id), [step], start=[time_count], count=[1])
 
       if (vartype == 'f') then
          i0 = 0
@@ -121,7 +124,7 @@ contains
 
       do i = 1, 4
          do i_ens = 1, dim_ens
-            ierr = nf90_put_var(ncid, varid(i0 + i), &
+            ierr = nf90_put_var(ncid(task_id), varid((task_id, i0 + i), &
                                 inputData(offsets(i)+1:offsets(i+1), i_ens), &
                                 start=[i_ens, 1, time_count], &
                                 count=[1, dims(i), 1] &

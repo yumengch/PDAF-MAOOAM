@@ -21,6 +21,7 @@ use mod_kind_pdaf, only: wp
 use model_def, only: model
 use rk4_integrator, only: RK4Integrator
 use mod_romb_pdaf, only: romb
+use mod_parallel_pdaf, only: task_id
 use mod_ModelWriter_pdaf, only: init_model_writer, finalize_model_writer
 implicit none
 
@@ -34,6 +35,7 @@ integer  :: natm
 integer  :: total_steps
 real(wp) :: total_time
 integer :: nx, ny
+
 real(wp), parameter   :: pi =  3.14159265358979323846
 real(wp), allocatable :: field(:)
 real(wp), allocatable :: field_new(:)
@@ -83,8 +85,9 @@ contains
 
 
       ! initialise the model writer
-      call init_model_writer('maooam.nc', natm, noc, dim_ens)
-
+      if (writeout) &
+         call init_model_writer(natm, noc, dim_ens)
+         
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
       field = maooam_model%load_IC()
