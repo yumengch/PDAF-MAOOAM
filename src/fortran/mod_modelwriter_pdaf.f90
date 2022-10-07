@@ -1,6 +1,7 @@
 module mod_ModelWriter_pdaf
 use mod_kind_pdaf, only: wp
-use mod_parallel_pdaf, only: task_id
+use mod_parallel_pdaf, only: task_id 
+use mpi
 use netcdf
 implicit none
 
@@ -16,38 +17,44 @@ contains
 
       integer :: ierr
       integer :: i, j
-      integer :: dimids(4, 3)
+      integer :: dimids(4, 2)
 
       character         :: vartype(2) = ['f', 'a']
+      character(len=3)  :: task_id_str
       character(len=8)  :: typename(2) = ['forecast', 'analysis']
       character(len=5)  :: varname(4)
       character(len=40) :: standard_name(4)
       character(len=50) :: long_name(4)
 
 
-      allocate(ncid(dim_ens), dimid(dim_ens, 4), varid_time(dim_ens), varid(dim_ens, 8))
+      allocate(ncid(dim_ens), dimid(dim_ens, 3), varid_time(dim_ens), varid(dim_ens, 8))
 
-      ierr = nf90_create('maooam'//_str(task_id)//'.nc', nf90_netcdf4, ncid(task_id))
+      write(task_id_str, '(I3)') task_id
+      ierr = nf90_create('maooam_'//trim(task_id_str)//'.nc', nf90_netcdf4, ncid(task_id))
       ! set global attributes
       call setAttrs
       ! initialise dimensions
       ierr = nf90_def_dim( ncid(task_id), 'time', nf90_unlimited, dimid(task_id, 1) )
       ierr = nf90_def_var( ncid(task_id), 'time', nf90_double, dimid(task_id, 1), varid_time(task_id) )
-      ierr = nf90_put_att( ncid(task_id), varid_time, 'long_name', 'time' )
-      ierr = nf90_put_att( ncid(task_id), varid_time, 'units', 'seconds since 1900-1-1 0:0:0' )
-      ierr = nf90_def_dim( ncid(task_id), 'ens', dim_ens, dimid(task_id, 2) )
-      ierr = nf90_def_dim( ncid(task_id), 'natm', natm, dimid(task_id, 3) )
-      ierr = nf90_def_dim( ncid(task_id), 'noc', noc, dimid(task_id, 4) )
+      ierr = nf90_put_att( ncid(task_id), varid_time(task_id), 'long_name', 'time' )
+      ierr = nf90_put_att( ncid(task_id), varid_time(task_id), 'units', 'seconds since 1900-1-1 0:0:0' )
+      ierr = nf90_def_dim( ncid(task_id), 'natm', natm, dimid(task_id, 2) )
+      ierr = nf90_def_dim( ncid(task_id), 'noc', noc, dimid(task_id, 3) )
       ! initialise output variables
       call getVarAttrs(varname, standard_name, long_name, dimids)
       do i = 1, 2
          do j = 1, 4
-            ierr = nf90_def_var(ncid(task_id), trim(varname(j))//'_'//vartype(i), nf90_double, dimids(j, :), varid(task_id, (i-1)*4+j))
-            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), 'standard_name', trim(standard_name(j))//'_'//trim(typename(i)))
-            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), 'long_name', trim(typename(i))//' of '//trim(long_name(j)))
+            ierr = nf90_def_var(ncid(task_id), trim(varname(j))//'_'//vartype(i), &
+                                nf90_double, dimids(j, :), varid(task_id, (i-1)*4+j))
+            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
+                                'standard_name', &
+                                trim(standard_name(j))//'_'//trim(typename(i)))
+            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
+                                'long_name', &
+                                trim(typename(i))//' of '//trim(long_name(j)))
          end do
       end do
-      ierr = NF90_ENDDEF(ncid)
+      ierr = NF90_ENDDEF(ncid(task_id))
    end subroutine init_model_writer
 
    subroutine setAttrs()
@@ -63,7 +70,7 @@ contains
    end subroutine setAttrs
 
    subroutine getVarAttrs(fieldnames, standard_name, long_name, dims)
-      integer, intent(out) :: dims(4, 3)
+      integer, intent(out) :: dims(4, 2)
       character(len=5), intent(out) :: fieldnames(4)
       character(len=40), intent(out) :: standard_name(4)
       character(len=50), intent(out) :: long_name(4)
@@ -80,10 +87,10 @@ contains
                    'coefficient of temperature in the ocean' &
                    ]
 
-      dims = reshape([dimid(2), dimid(3),dimid(1), &
-              dimid(2), dimid(3),dimid(1), &
-              dimid(2), dimid(4),dimid(1), &
-              dimid(2), dimid(4),dimid(1)], shape(dims), order=[2, 1])
+      dims = reshape([dimid(task_id, 2), dimid(task_id, 1), &
+              dimid(task_id, 2), dimid(task_id, 1), &
+              dimid(task_id, 3), dimid(task_id, 1), &
+              dimid(task_id, 3), dimid(task_id, 1)], shape(dims), order=[2, 1])
    end subroutine getVarAttrs
 
    function iso8601() result(datetime)
@@ -100,15 +107,15 @@ contains
           dt(7), dt(8), zone(1:3), zone(4:5)
    end function iso8601
 
-   subroutine write_model(step, vartype, inputData, natm, noc, dim_ens)
+   subroutine write_model(step, vartype, inputData, natm, noc)
       real(wp), intent(in) :: step
       character, intent(in) :: vartype
-      real(wp), intent(in) :: inputData(:, :)
-      integer, intent(in)      :: natm, noc, dim_ens
+      real(wp), intent(in) :: inputData(:)
+      integer, intent(in)      :: natm, noc
 
       integer :: offsets(5)
       integer :: dims(4)
-      integer :: i, ierr, i_ens
+      integer :: i, ierr
       integer :: i0
 
       time_count = time_count + 1
@@ -123,18 +130,18 @@ contains
       dims = [natm, natm, noc, noc]
 
       do i = 1, 4
-         do i_ens = 1, dim_ens
-            ierr = nf90_put_var(ncid(task_id), varid((task_id, i0 + i), &
-                                inputData(offsets(i)+1:offsets(i+1), i_ens), &
-                                start=[i_ens, 1, time_count], &
-                                count=[1, dims(i), 1] &
-                                )
-         end do
+         ierr = nf90_put_var(ncid(task_id), varid(task_id, i0 + i), &
+                             inputData(offsets(i)+1:offsets(i+1)), &
+                             start=[1, time_count], &
+                             count=[dims(i), 1] &
+                             )
       end do
    end subroutine write_model
 
    subroutine finalize_model_writer()
       integer :: ierr
-      ierr = nf90_close(ncid)
+      ierr = nf90_close(ncid(task_id))
+      call MPI_Barrier(MPI_COMM_WORLD, ierr)
+      deallocate(ncid, dimid, varid_time, varid)
    end subroutine finalize_model_writer
 end module mod_ModelWriter_pdaf

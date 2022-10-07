@@ -294,7 +294,8 @@ contains
       DEALLOCATE(field, field_new)
       CALL maooam_model%clean
       CALL integr%clean
-      call finalize_model_writer()
+      if (writeout) &
+         call finalize_model_writer()
 
    end subroutine finalize_model
 end module mod_model_pdaf

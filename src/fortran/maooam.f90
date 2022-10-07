@@ -26,15 +26,16 @@ PROGRAM maooam_pdaf
 
    t=0.D0
    if (writeout) &
-      call write_model(0._wp, 'f', field(1:), natm, noc, 1)
+      call write_model(0._wp, 'f', field(1:), natm, noc)
    print *, 'Starting the time evolution...'
    DO it = 1, total_steps
       IF (writeout .AND. mod(t,tw) < integr%dt) THEN
-         call write_model(t, 'a', field(1:), natm, noc, 1)
+         call write_model(t, 'a', field(1:), natm, noc)
+      endif
       CALL integr%step(field, t, field_new)
       field = field_new
       IF (writeout .AND. mod(t,tw) < integr%dt) THEN
-         call write_model(t, 'f', field(1:), natm, noc, 1)
+         call write_model(t, 'f', field(1:), natm, noc)
       end if
       call assimilate_pdaf()
    END DO
