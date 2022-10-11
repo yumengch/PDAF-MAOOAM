@@ -21,7 +21,7 @@ use mod_kind_pdaf, only: wp
 use model_def, only: model
 use rk4_integrator, only: RK4Integrator
 use mod_romb_pdaf, only: romb
-use mod_parallel_pdaf, only: task_id
+use mod_parallel_pdaf, only: task_id, abort_parallel
 use mod_ModelWriter_pdaf, only: init_model_writer, finalize_model_writer
 implicit none
 
@@ -47,11 +47,13 @@ real(wp), allocatable :: psi_o(:, :)
 real(wp), allocatable :: T_o(:, :)
 
 logical :: writeout
+logical :: ln_restart
+integer :: restart_it
 real(wp) :: tw
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny
+namelist /model_nml/ nx, ny, ln_restart, restart_it
 
 interface basis
    real(wp) function basis(M, H, P, x, y)
@@ -65,6 +67,8 @@ end interface basis
 contains
    subroutine initialize_model()
       integer :: ndim
+      character(len=3)  :: task_id_str
+
       print *, 'Model MAOOAM v1.4'
       print *, 'Loading information...'
       ! initialise model configurations 
@@ -83,7 +87,6 @@ contains
       writeout = maooam_model%model_configuration%integration%writeout
       tw = maooam_model%model_configuration%integration%tw
 
-
       ! initialise the model writer
       if (writeout) &
          call init_model_writer(natm, noc, dim_ens)
@@ -91,6 +94,11 @@ contains
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
       field = maooam_model%load_IC()
+      
+      if (ln_restart) then
+         write(task_id_str, '(I3.3)') task_id
+         call read_restart('restart/maooam_'//trim(task_id_str)//'.nc', natm, noc, field(1:), restart_it)
+      endif
 
       ! get atmospheric components
       if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
@@ -98,6 +106,45 @@ contains
       if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
       if (.not. allocated(T_o)) allocate(T_o(nx, ny))
    end subroutine initialize_model
+
+   subroutine read_restart(filename, natm, noc, fields, it)
+      use netcdf
+      character(*), intent(in)    :: filename
+      integer,      intent(in)    :: natm, noc
+      real(wp),     intent(inout) :: fields(:)
+      integer,      intent(inout) :: it
+
+      ! local variables
+      integer          :: ncid
+      integer          :: varid
+      integer          :: dimid
+      integer          :: i, nt
+      integer          :: ierr
+      integer          :: dim(4)
+      integer          :: offset(5)
+      character(len=7) :: varnames(4)
+
+      varnames = [character(len=7) :: 'psi_a_f', 'T_a_f', 'psi_o_f', 'T_o_f']
+      dim = [natm, natm, noc, noc]
+      offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
+
+      ierr = nf90_open(filename, nf90_nowrite, ncid)
+      ierr = nf90_inq_dimid(ncid, 'time', dimid)
+      ierr = nf90_inquire_dimension(ncid, dimid, len=nt)
+
+      if (it > nt) then
+         print *, 'The selected restart time step is larger than the time steps in the restart file.'
+         call abort_parallel()
+      end if
+
+      do i = 1, 4
+         ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
+         ierr = nf90_get_var(ncid, varid, fields(offset(i)+1:offset(i+1)), &
+                             start=[1, it], count=[dim(i), 1]) 
+      end do
+      ierr = nf90_close(ncid)
+
+   end subroutine read_restart
 
    real(wp) function Fa(M, H, P, x, y)
       integer,  intent(in) :: M, H, P

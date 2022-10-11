@@ -4,7 +4,7 @@ PROGRAM maooam_pdaf
               only: dim_ens, natm, noc, &
                     initialize_model, &
                     finalize_model, total_steps, &
-                    writeout, tw, &
+                    writeout, tw, restart_it,&
                     integr, field, field_new
    use mod_config_pdaf, only: read_namelist
    use mod_parallel_pdaf, only: init_parallel_pdaf, finalize_parallel_pdaf
@@ -24,9 +24,9 @@ PROGRAM maooam_pdaf
    ! initialise PDAF
    call init_pdaf(screen)
 
-   t=0.D0
+   t= (restart_it-1)*tw
    if (writeout) &
-      call write_model(0._wp, 'f', field(1:), natm, noc)
+      call write_model(t, 'f', field(1:), natm, noc)
    print *, 'Starting the time evolution...'
    DO it = 1, total_steps
       IF (writeout .AND. mod(t,tw) < integr%dt) THEN

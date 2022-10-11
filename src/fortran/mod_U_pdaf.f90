@@ -97,7 +97,8 @@ contains
          ONLY: mype_world
       USE mod_model_pdaf, &            ! Model variables
          ONLY: total_steps
-
+      USE mod_observations_pdaf, &
+         ONLY: delt_obs_all
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -106,26 +107,27 @@ contains
       INTEGER, INTENT(out) :: doexit   !< Whether to exit forecasting (1 for exit)
       REAL(wp), INTENT(out)    :: time     !< Current model (physical) time
 
-      integer :: delt_obs = 2
+      integer :: delt_obs
       ! *******************************************************
       ! *** Set number of time steps until next observation ***
       ! *******************************************************
       time = 0.0          ! Not used in this implementation
+      delt_obs = minval(delt_obs_all)
+      print *, stepnow, delt_obs, total_steps
+      IF (stepnow + delt_obs <= total_steps) THEN
+         ! *** During the assimilation process ***
+         nsteps = delt_obs   ! This assumes a constant time step interval
+         doexit = 0          ! Not used in this impl
 
-      IF (stepnow + nsteps <= total_steps) THEN
-      ! *** During the assimilation process ***
-      nsteps = delt_obs   ! This assumes a constant time step interval
-      doexit = 0          ! Not used in this impl
-
-      IF (mype_world == 0) WRITE (*, '(i7, 3x, a, i7)') &
-         stepnow, 'Next observation at time step', stepnow + nsteps
+         IF (mype_world == 0) WRITE (*, '(i7, 3x, a, i7)') &
+            stepnow, 'Next observation at time step', stepnow + nsteps
       ELSE
-      ! *** End of assimilation process ***
-      nsteps = 0          ! No more steps
-      doexit = 1          ! Exit assimilation
+         ! *** End of assimilation process ***
+         nsteps = 0          ! No more steps
+         doexit = 1          ! Exit assimilation
 
-      IF (mype_world == 0) WRITE (*, '(i7, 3x, a)') &
-         stepnow, 'No more observations - end assimilation'
+         IF (mype_world == 0) WRITE (*, '(i7, 3x, a)') &
+            stepnow, 'No more observations - end assimilation'
       END IF
    END SUBROUTINE next_observation_pdaf
    !!

@@ -111,8 +111,7 @@ contains
          only: mype_world, mpierr
       use pdaf_interfaces_module, only: PDAF_print_info, PDAF_deallocate
       use mod_obswriter_pdaf, only: finalizeObs
-
-      include 'mpif.h'
+      use mpi
 
       ! Show allocated memory for PDAF
       if (mype_world==0) call PDAF_print_info(2)

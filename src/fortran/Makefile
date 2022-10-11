@@ -1,16 +1,15 @@
-MODEL_DIR=
+MODEL_DIR=model
 
-PDAF_INC=-I/usr/include -I$(HOME)/NCEO/MAOOAM/PDAF_V2.0/include 
-PDAF_LIB=-L$(HOME)/NCEO/MAOOAM/PDAF_V2.0/lib -lpdaf-d
-NETCDF_INC=-I/home/users/ia923171/spack/opt/spack/linux-centos7-x86_64/gcc-7.3.0/netcdf-fortran-4.5.4-arvaui536gqcge2mjsqpngr4dxzxeyxj/include
-NETCDF_LIB=-L/usr/lib/x86_64-linux-gnu -lnetcdff -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -lnetcdf -lnetcdf -ldl -lm 
-
+PDAF_INC=-I/work/n01/n01/ymchen/MAOOAM/PDAF_V2.0/include 
+PDAF_LIB=-L/work/n01/n01/ymchen/MAOOAM/PDAF_V2.0/lib -lpdaf-d
+NETCDF_INC=-I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.7/gnu/9.1/include
+NETCDF_LIB=-L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.7/gnu/9.1/lib -L/opt/cray/pe/hdf5-parallel/1.12.0.7/lib -lnetcdff -lnetcdf -lhdf5_hl -lhdf5 -lz 
 
 # Define relevant compiler options for debug case and normal case for each compiler
-COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -O0 -g -cpp -fcheck=all -Wall -Wextra -Wconversion -pedantic -Wno-unused-parameter -ffpe-trap=zero,overflow,underflow -cpp
-LD_FLAGS = $(NETCDF_LIB) $(PDAF_LIB)  -L/usr/lib  -llapack -lblas
+COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -O2 -cpp
+LD_FLAGS = $(NETCDF_LIB) $(PDAF_LIB)
 
-FC=mpif90
+FC=ftn
 LD=$(FC)
 
 SHELL = /bin/sh
@@ -47,10 +46,10 @@ PDAF_OBJECTS = mod_kind_pdaf.o \
 		  mod_model_pdaf.o \
 		  mod_localization_pdaf.o \
 		  mod_config_pdaf.o \
-		  mod_U_pdaf.o \
 		  mod_observations_pdaf.o \
 		  mod_obswriter_pdaf.o \
-		  mod_U_PDAFomi_pdaf.o \
+                  mod_U_pdaf.o \
+                  mod_U_PDAFomi_pdaf.o \
 		  mod_init_pdaf.o \
 		  mod_assimilate_pdaf.o \
 		  maooam.o

@@ -3,7 +3,7 @@ use mod_kind_pdaf, only: wp
 use netcdf
 implicit none
 
-integer :: time_count = 0
+integer :: time_count(2) = 0
 integer :: ncid
 integer :: dimid(4)
 integer :: varid_time
@@ -104,22 +104,25 @@ contains
       integer, intent(in)      :: nx, ny, dim_ens
 
       integer :: i, ierr, i_ens
-      integer :: i0
+      integer :: i0,tc
 
-      time_count = time_count + 1
-      ierr = nf90_put_var(ncid, varid_time, [step], start=[time_count], count=[1])
 
       if (vartype == 'f') then
          i0 = 0
+         time_count(1) = time_count(1) + 1
+         tc = time_count(1)
+         ierr = nf90_put_var(ncid, varid_time, [step], start=[tc], count=[1])
       else
          i0 = 4
+         time_count(2) = time_count(2) + 1
+         tc = time_count(2)
       endif
 
       do i = 1, 4
          do i_ens = 1, dim_ens
             ierr = nf90_put_var(ncid, varid(i0 + i), &
                                 inputData((i-1)*nx*ny + 1: i*nx*ny, i_ens), &
-                                start=[i_ens, 1, 1, time_count], &
+                                        start=[i_ens, 1, 1, tc], &
                                 count=[1, nx, ny, 1] &
                                 )
          end do

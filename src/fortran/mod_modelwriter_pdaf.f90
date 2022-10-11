@@ -5,7 +5,7 @@ use mpi
 use netcdf
 implicit none
 
-integer :: time_count = 0
+integer :: time_count(2) = 0
 integer, allocatable :: ncid(:)
 integer, allocatable :: dimid(:, :)
 integer, allocatable :: varid_time(:)
@@ -29,7 +29,7 @@ contains
 
       allocate(ncid(dim_ens), dimid(dim_ens, 3), varid_time(dim_ens), varid(dim_ens, 8))
 
-      write(task_id_str, '(I3)') task_id
+      write(task_id_str, '(I3.3)') task_id
       ierr = nf90_create('maooam_'//trim(task_id_str)//'.nc', nf90_netcdf4, ncid(task_id))
       ! set global attributes
       call setAttrs
@@ -115,24 +115,28 @@ contains
 
       integer :: offsets(5)
       integer :: dims(4)
-      integer :: i, ierr
+      integer :: i, ierr, tc
       integer :: i0
-
-      time_count = time_count + 1
-      ierr = nf90_put_var(ncid(task_id), varid_time(task_id), [step], start=[time_count], count=[1])
 
       if (vartype == 'f') then
          i0 = 0
+         time_count(1) = time_count(1) + 1
+         tc = time_count(1)
+         ierr = nf90_put_var(ncid(task_id), varid_time(task_id), [step], start=[time_count(1)], count=[1])
       else
          i0 = 4
+         time_count(2) = time_count(2) + 1
+         tc = time_count(2)
       endif
+
+
       offsets = [0, natm, 2*natm, 2*natm + noc, 2*(natm + noc)]
       dims = [natm, natm, noc, noc]
 
       do i = 1, 4
          ierr = nf90_put_var(ncid(task_id), varid(task_id, i0 + i), &
                              inputData(offsets(i)+1:offsets(i+1)), &
-                             start=[1, time_count], &
+                             start=[1, tc], &
                              count=[dims(i), 1] &
                              )
       end do
