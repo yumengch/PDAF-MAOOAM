@@ -140,6 +140,7 @@ contains
                              count=[dims(i), 1] &
                              )
       end do
+      ierr = nf90_sync(ncid(task_id))
    end subroutine write_model
 
    subroutine finalize_model_writer()

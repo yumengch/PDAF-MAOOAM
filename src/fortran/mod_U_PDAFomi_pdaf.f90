@@ -21,6 +21,11 @@ use mod_kind_pdaf, only: wp
 use mod_observations_pdaf, only: n_obs
 implicit none
 
+integer :: timer_getobs_start, timer_getobs_end, t_rate
+integer :: timer_dimomi_start, timer_dimomi_end
+integer :: timer_op_start, timer_op_end
+real(wp) :: getobs_dur, dimomi_dur, op_dur
+
 contains
    subroutine get_obs_f(step, dim_obs_f, observation_f)
       use mod_model_pdaf, only: dim_state
@@ -31,12 +36,16 @@ contains
 
       integer :: i_obs, istart, iend
 
+      call SYSTEM_CLOCK(timer_getobs_start)
       istart = 1
       do i_obs = 1, n_obs
          iend = istart + dim_state - 1
          call writeObs(i_obs, step, observation_f(istart:iend))
          istart = iend + 1
       end do
+      call SYSTEM_CLOCK(timer_getobs_end, t_rate)
+      getobs_dur = getobs_dur + &
+          (real(timer_getobs_end, wp) - real(timer_getobs_start, wp))/real(t_rate, wp)
    end subroutine get_obs_f
 
 
@@ -48,12 +57,17 @@ contains
       integer :: this_dim_obs
       integer :: i_obs
 
+      call SYSTEM_CLOCK(timer_dimomi_start)
       dim_obs = 0
       
       do i_obs = 1, n_obs
          call init_dim_obs_gen(i_obs, this_dim_obs)
          dim_obs = dim_obs + this_dim_obs
       end do
+      call SYSTEM_CLOCK(timer_dimomi_end, t_rate)
+      dimomi_dur = dimomi_dur + &
+          (real(timer_dimomi_end, wp) - real(timer_dimomi_start, wp))/real(t_rate, wp)
+
    end subroutine init_dim_obs_gen_pdafomi
 
 
@@ -91,13 +105,18 @@ contains
       ! ******************************************************
       ! *** Apply observation operator H on a state vector ***
       ! ******************************************************
-
+      call SYSTEM_CLOCK(timer_op_start)
       ! The order of these calls is not relevant as the setup
       ! of the overall observation vector is defined by the
       ! order of the calls in init_dim_obs_pdafomi
       do i_obs = 1, n_obs
          CALL obs_op_gridpoint(i_obs, dim_p, dim_obs, state_p, ostate)
       end do
+
+      call SYSTEM_CLOCK(timer_op_end, t_rate)
+      op_dur = op_dur + &
+          (real(timer_op_end, wp) - real(timer_op_start, wp))/real(t_rate, wp)
+
    END SUBROUTINE obs_op_pdafomi
 
    SUBROUTINE init_dim_obs_l_pdafomi(domain_p, step, dim_obs, dim_obs_l)

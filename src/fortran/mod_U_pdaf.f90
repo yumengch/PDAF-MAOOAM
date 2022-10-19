@@ -27,6 +27,11 @@ use mod_kind_pdaf, only: wp
 implicit none
 
 logical :: firsttime = .true.
+integer :: timer_collect_start, timer_collect_end, t_rate
+integer :: timer_distr_start, timer_distr_end
+integer :: timer_next_start, timer_next_end
+integer :: timer_prepost_start, timer_prepost_end
+real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
 contains
    subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       use netcdf
@@ -108,12 +113,14 @@ contains
       REAL(wp), INTENT(out)    :: time     !< Current model (physical) time
 
       integer :: delt_obs
+
+      call SYSTEM_CLOCK(timer_next_start)      
       ! *******************************************************
       ! *** Set number of time steps until next observation ***
       ! *******************************************************
       time = 0.0          ! Not used in this implementation
       delt_obs = minval(delt_obs_all)
-      print *, stepnow, delt_obs, total_steps
+
       IF (stepnow + delt_obs <= total_steps) THEN
          ! *** During the assimilation process ***
          nsteps = delt_obs   ! This assumes a constant time step interval
@@ -129,6 +136,9 @@ contains
          IF (mype_world == 0) WRITE (*, '(i7, 3x, a)') &
             stepnow, 'No more observations - end assimilation'
       END IF
+    call SYSTEM_CLOCK(timer_next_end, t_rate)
+    next_dur = next_dur + &
+        (real(timer_next_end, wp) - real(timer_next_start, wp))/real(t_rate, wp)      
    END SUBROUTINE next_observation_pdaf
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
@@ -141,6 +151,7 @@ contains
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
 
+      call SYSTEM_CLOCK(timer_distr_start)
       ! *************************************************
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
@@ -150,6 +161,10 @@ contains
       psi_o = reshape(state_p(2*nx*ny+1:3*nx*ny), [nx, ny])
       T_o   = reshape(state_p(3*nx*ny+1:4*nx*ny), [nx, ny])
       call toFourier(nx, ny)
+
+      call SYSTEM_CLOCK(timer_distr_end, t_rate)
+      distr_dur = distr_dur + &
+        (real(timer_distr_end, wp) - real(timer_distr_start, wp))/real(t_rate, wp)
    END SUBROUTINE distribute_state_pdaf
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
@@ -163,7 +178,7 @@ contains
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
 
-
+      call SYSTEM_CLOCK(timer_collect_start)
       ! *************************************************
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
@@ -174,6 +189,9 @@ contains
       state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
       state_p(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
 
+      call SYSTEM_CLOCK(timer_collect_end, t_rate)
+      collect_dur = collect_dur + &
+        (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
    END SUBROUTINE collect_state_pdaf
 
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
@@ -203,6 +221,7 @@ contains
       integer :: off_p
       integer :: i
 
+      call SYSTEM_CLOCK(timer_prepost_start)
       ! pre- and post-processing of ensemble
       if (firsttime) then
          print *, 'Analyze initial state ensemble'
@@ -262,6 +281,8 @@ contains
       endif
 
       firsttime = .false.
-
+      call SYSTEM_CLOCK(timer_prepost_end, t_rate)
+      prepost_dur = prepost_dur + &
+          (real(timer_prepost_end, wp) - real(timer_prepost_start, wp))/real(t_rate, wp)
    END SUBROUTINE prepoststep_ens_pdaf
 end module mod_U_pdaf

@@ -27,7 +27,6 @@ use mod_filteroptions_pdaf, only: filtertype, subtype, &
 use mod_inflation_pdaf, only: type_forget, forget
 implicit none
 
-
 contains
    subroutine setEnKFOptions(filter_param_i, filter_param_r)
       use mod_model_pdaf, only: dim_state_p, dim_ens
@@ -110,19 +109,21 @@ contains
       use mod_parallel_pdaf, &
          only: mype_world, mpierr
       use pdaf_interfaces_module, only: PDAF_print_info, PDAF_deallocate
+      use mod_StateWriter_pdaf, only: finalize_state_writer 
       use mod_obswriter_pdaf, only: finalizeObs
       use mpi
 
+      call finalize_state_writer()
       ! Show allocated memory for PDAF
       if (mype_world==0) call PDAF_print_info(2)
       if (mype_world==0) call PDAF_print_info(11)
 
       ! Print PDAF timings onto screen
       if (mype_world==0) call PDAF_print_info(3)
-
+      
+      if (filtertype == 100)  call finalizeObs()
       ! Deallocate PDAF arrays
       call PDAF_deallocate()
-      if (filtertype == 100)  call finalizeObs()
       call mpi_barrier(mpi_comm_world, mpierr)
    end subroutine finalize_pdaf
 end module mod_init_pdaf

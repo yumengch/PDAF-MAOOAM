@@ -8,6 +8,7 @@
   T_RUN = 0.4 ! 3.5D6          !  length of trajectory on the attractor (e.g. 5.D8)
   DT = 1.D-1             !  the time step
   WRITEOUT = .true.    !  write out all variables every tw time units, and snapshots every tw_snap time units during the transient period
+  tw = 
 &END
 
 

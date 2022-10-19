@@ -98,6 +98,8 @@ contains
       if (ln_restart) then
          write(task_id_str, '(I3.3)') task_id
          call read_restart('restart/maooam_'//trim(task_id_str)//'.nc', natm, noc, field(1:), restart_it)
+      else
+         restart_it = 1
       endif
 
       ! get atmospheric components
