@@ -1,0 +1,5 @@
+&grid_nml
+n_exp = 9
+nt = 2000
+n_sample = 1000 
+/
