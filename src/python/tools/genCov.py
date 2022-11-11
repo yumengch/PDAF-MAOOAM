@@ -57,10 +57,10 @@ def init_model_params(n):
     # Model parameters instantiation with default specs
     model_parameters = QgParams({'n' : n})
     # Mode truncation at the wavenumber 2 in both x and y spatial coordinate
-    model_parameters.set_atmospheric_channel_fourier_modes(6, 6)
+    model_parameters.set_atmospheric_channel_fourier_modes(2, 4)
     # Mode truncation at the wavenumber 2 in the x and at the
     # wavenumber 4 in the y spatial coordinates for the ocean
-    model_parameters.set_oceanic_basin_fourier_modes(2, 4)
+    model_parameters.set_oceanic_basin_fourier_modes(4, 4)
 
     # Setting MAOOAM parameters according to the publication linked above
     model_parameters.set_params({'kd': 0.0290, 'kdp': 0.0290, 'n': n, 'r': 1.e-7,
@@ -123,24 +123,29 @@ def getDataArrays(svals, svdU, nx, ny, nrank, meanstate):
 
 
 if __name__ == '__main__':
+    import time
     # initialise model configurations
     n = 1.5
     mp = init_model_params(n)
     # read model trajectory
     ds = xr.open_dataset('trajectory.nc')
     nt = ds.dims['time']
-    fields = np.hstack([ds.psi_a_f, ds.T_a_f, ds.psi_o_f, ds.T_o_f])[..., 0]
+    fields = np.hstack([ds.psi_a_f, ds.T_a_f, ds.psi_o_f, ds.T_o_f])
+    
+    start = time.perf_counter()
     # convert model from Fourier to physical space
     x0 = 0; x1 = 2*np.pi/n
     y0 = 0; y1 = np.pi
-    nx = 9
-    ny = 17
+    nx = 257 
+    ny = 257
     X = np.linspace(x0, x1, nx)
     Y = np.linspace(y0, y1, ny)
     xc, yc = np.meshgrid(X, Y)
     psi_a, T_a, psi_o, T_o = toPhysical(mp, fields, xc, yc)
+    print ('transformation time', time.perf_counter() - start)
 
     # do EOF decomposition using PDAF
+    start = time.perf_counter()
     maxtimes = nt
     nrank = nt
     size = nx*ny
@@ -151,9 +156,11 @@ if __name__ == '__main__':
     _, stddev, svals, svdU, meanstate, status = PDAF.eofcovar(dim_state, offsets, 1, 1,
                                                               state, state.mean(axis=1), 3)
     assert status == 0, 'Error in PDAF.EOFcovar'
+    print ('genCovar time', time.perf_counter() - start)
 
+    start = time.perf_counter()
     # save the covariance matrix
-    svdU = svdU.T
-    ds = xr.Dataset(getDataArrays(svals, svdU, nx, ny, nrank, meanstate),
-                    attrs=getFileAttrs())
+    ds = xr.Dataset(getDataArrays(svals, svdU.T, nx, ny, nrank, meanstate),
+                     attrs=getFileAttrs())
     ds.to_netcdf('covariance.nc')
+    print ('write time', time.perf_counter() - start)

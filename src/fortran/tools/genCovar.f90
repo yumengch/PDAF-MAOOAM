@@ -25,6 +25,14 @@ real(wp), allocatable :: svdU(:, :)
 real(wp), allocatable :: svals(:)
 real(wp), allocatable :: stddev(:)
 
+! timers
+integer :: t_rate
+integer :: t_reader_start, t_reader_end
+integer :: t_transform_start, t_transform_end
+integer :: t_gen_start, t_gen_end
+integer :: t_write_start, t_write_end
+real(wp) :: t_reader_dur, t_transform_dur, t_gen_dur, t_write_dur
+
 namelist /genCov_nml/ nx, ny
 
 ! read the namelist
@@ -36,9 +44,11 @@ CALL maooam_model%init
 natm = maooam_model%model_configuration%modes%natm
 noc = maooam_model%model_configuration%modes%noc
 nmod = maooam_model%model_configuration%modes%ndim
-
+call SYSTEM_CLOCK(t_reader_start)
 ! read model trajectory
 call trajectory_reader(natm, noc, nmod, nt, coeffs)
+call system_clock(t_reader_end, t_rate)
+t_reader_dur = (real(t_reader_end, wp) - real(t_reader_start,wp))/real(t_rate, wp)
 
 dim_state = 4*nx*ny
 if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
@@ -47,6 +57,7 @@ if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
 if (.not. allocated(T_o)) allocate(T_o(nx, ny))
 if (.not. allocated(states))  ALLOCATE(states(dim_state, nt))
 
+call system_clock(t_transform_start)
 do i = 1, nt
    ! transform from Fourier to physical space
    call toPhysical(maooam_model, nx, ny, coeffs(:, i), &
@@ -54,6 +65,8 @@ do i = 1, nt
    ! transform model field to state vector
    call FieldtoState(nx, ny, psi_a, T_a, psi_o, T_o, states(:, i))
 end do
+call system_clock(t_transform_end, t_rate)
+t_transform_dur = (real(t_transform_end, wp) - real(t_transform_start,wp))/real(t_rate,wp)
 
 ! compute the temporal mean of the state vector
 if (.not. allocated(meanstate))  ALLOCATE(meanstate(dim_state))
@@ -64,16 +77,27 @@ dim_field = nx*ny
 ALLOCATE(svals(nt))
 ALLOCATE(svdU(dim_state, nt))
 allocate(stddev(4))
+call system_clock(t_gen_start)
 ! Call routine generating matrix decomposition
 CALL PDAF_eofcovar(dim_state, nt, 4, &
                    [dim_field, dim_field, dim_field, dim_field], &
                    [0, dim_field, 2*dim_field, 3*dim_field], &
                     1, 1, states, stddev, svals, svdU, meanstate, 3, status)
+call system_clock(t_gen_end, t_rate)
+t_gen_dur = (real(t_gen_end, wp) - real(t_gen_start ,wp))/real(t_rate, wp)
 
+call system_clock(t_write_start)
 ! save the EOF results
 call init_covar_writer('covariance.nc', nt, nx, ny, ncid, varid)
 call write_covar(ncid, varid, nt, nx, ny, svals, svdU, meanstate)
 call finalize_covar_writer()
+call system_clock(t_write_end, t_rate)
+t_write_dur = (real(t_write_end, wp) - real(t_write_start,wp))/real(t_rate,wp)
+
+print *, 'reader time', t_reader_dur
+print *, 'transform time', t_transform_dur
+print *, 'gencov time', t_gen_dur
+print *, 'write time', t_write_dur
 
 deallocate(coeffs, psi_a,  T_a,  psi_o,  T_o)
 deallocate(states, meanstate, svdU, svals, stddev)
@@ -106,7 +130,7 @@ contains
       do i = 1, 4
          ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
          ierr = nf90_get_var(ncid, varid, coeffs(offset(i)+1:offset(i+1), :), &
-                             start=[1, 1, 1], count=[1, dim(i), nt]) 
+                             start=[1, 1], count=[dim(i), nt]) 
       end do
       ierr = nf90_close(ncid)
    end subroutine trajectory_reader

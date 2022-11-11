@@ -1,4 +1,4 @@
 &genCov_nml
-nx = 9
-ny = 17
+nx = 257 
+ny = 257
 /

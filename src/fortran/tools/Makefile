@@ -1,9 +1,14 @@
-INCS=-I/usr/include -I$(HOME)/NCEO/MAOOAM/PDAF_V2.0/include # -I/home/users/ia923171/spack/opt/spack/linux-centos7-x86_64/gcc-7.3.0/netcdf-fortran-4.5.4-arvaui536gqcge2mjsqpngr4dxzxeyxj/include
-LIBNC=-L/usr/lib/x86_64-linux-gnu -lnetcdff -Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -lnetcdf -lnetcdf -ldl -lm # -L/home/users/ia923171/spack/opt/spack/linux-centos7-x86_64/gcc-7.3.0/netcdf-fortran-4.5.4-arvaui536gqcge2mjsqpngr4dxzxeyxj/lib -lnetcdff -lnetcdf -lnetcdf
-LIBPDAF=-L$(HOME)/NCEO/MAOOAM/PDAF_V2.0/lib -lpdaf-d
+MODEL_DIR=model
+
+PDAF_INC=-I/home/users/yumengch/PDAF_V2.0/include
+PDAF_LIB=-L/home/users/yumengch/PDAF_V2.0/lib -lpdaf-var -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netlib-lapack-3.10.1-2ugsub76cuzvc4ozk5oyjs27cstb23wh/lib64 -llapack -lblas
+NETCDF_INC=-I/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/include
+NETCDF_LIB=-L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-c-4.8.1-okwvugrilg2h3nnql5i6bhlz6mz24swi/lib -lnetcdf -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/lib -lnetcdff -ldl -lm
+
 # Define relevant compiler options for debug case and normal case for each compiler
-COMPILER_FLAGS = $(INCS) -O0 -g -cpp -fcheck=all -Wall -Wextra -Wconversion -pedantic -ffpe-trap=zero,overflow,underflow -fsanitize=address -cpp
-LD_FLAGS = $(LIBNC) $(LIBPDAF)  -L/usr/lib  -llapack -lblas
+COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -O2 -cpp
+LD_FLAGS = $(NETCDF_LIB) $(PDAF_LIB)
+#
 
 FC=mpif90
 
