@@ -29,7 +29,7 @@ PROGRAM maooam_pdaf
    ! initialise model
    call initialize_model()
    ! initialise PDAF
-   ! call init_pdaf(verbose)
+   call init_pdaf(verbose)
 
    t= (restart_it-1)*tw
    if (writeout) &
@@ -58,7 +58,7 @@ PROGRAM maooam_pdaf
          call write_model(t, 'f', field(1:), natm, noc)
       end if
       call SYSTEM_CLOCK(timer_PDAF_start)
-      ! call assimilate_pdaf()
+      call assimilate_pdaf()
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)
@@ -76,6 +76,6 @@ PROGRAM maooam_pdaf
    print *, 'user-defined initialise observation:' , dimomi_dur
    print *, 'user-defined observation operator:'   , op_dur
    call finalize_model()
-   ! CALL finalize_pdaf()
+   CALL finalize_pdaf()
    call finalize_parallel_pdaf()
 END PROGRAM maooam_pdaf
