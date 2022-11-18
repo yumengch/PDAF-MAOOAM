@@ -3,7 +3,7 @@ use mod_kind_pdaf, only: wp
 use netcdf
 implicit none
 
-integer :: time_count(2) = 0
+integer :: time_count(2)
 integer :: ncid
 integer :: dimid(4)
 integer :: varid_time
@@ -45,6 +45,7 @@ contains
          end do
       end do
       ierr = NF90_ENDDEF(ncid)
+      time_count(:) = 0
    end subroutine init_state_writer
 
    subroutine setAttrs()

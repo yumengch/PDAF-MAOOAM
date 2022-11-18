@@ -33,7 +33,7 @@ integer  :: noc
 integer  :: natm
 
 integer  :: total_steps
-real(wp) :: total_time
+real(wp) :: total_time, current_time
 integer :: nx, ny
 
 real(wp), parameter   :: pi =  3.14159265358979323846
@@ -97,6 +97,7 @@ contains
       
       if (ln_restart) then
          write(task_id_str, '(I3.3)') task_id
+         print *, task_id_str
          call read_restart('restart/maooam_'//trim(task_id_str)//'.nc', natm, noc, field(1:), restart_it)
       else
          restart_it = 1
@@ -138,6 +139,10 @@ contains
          print *, 'The selected restart time step is larger than the time steps in the restart file.'
          call abort_parallel()
       end if
+
+      ierr = nf90_inq_varid(ncid, 'time', varid)
+      ierr = nf90_get_var(ncid, varid, current_time, &
+                          start=[it], count=[1])
 
       do i = 1, 4
          ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)

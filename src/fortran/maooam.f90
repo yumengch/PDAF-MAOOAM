@@ -5,9 +5,10 @@ PROGRAM maooam_pdaf
                     initialize_model, &
                     finalize_model, total_steps, &
                     writeout, tw, restart_it,&
-                    integr, field, field_new
+                    integr, field, field_new, &
+                    current_time
    use mod_config_pdaf, only: verbose, read_namelist
-   use mod_parallel_pdaf, only: init_parallel_pdaf, finalize_parallel_pdaf
+   use mod_parallel_pdaf, only: mype_world, init_parallel_pdaf, finalize_parallel_pdaf
    use mod_init_pdaf, only: init_pdaf, finalize_pdaf
    use mod_ModelWriter_pdaf, only: write_model
    use mod_assimilate_pdaf, only: assimilate_pdaf
@@ -31,7 +32,7 @@ PROGRAM maooam_pdaf
    ! initialise PDAF
    call init_pdaf(verbose)
 
-   t= (restart_it-1)*tw
+   t= current_time 
    if (writeout) &
       call write_model(t, 'f', field(1:), natm, noc)
    print *, 'Starting the time evolution...'

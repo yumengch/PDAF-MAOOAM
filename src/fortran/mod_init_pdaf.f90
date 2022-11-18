@@ -111,6 +111,7 @@ contains
       use pdaf_interfaces_module, only: PDAF_print_info, PDAF_deallocate
       use mod_StateWriter_pdaf, only: finalize_state_writer 
       use mod_obswriter_pdaf, only: finalizeObs
+      use mod_observations_pdaf, only: finalize_obs
       use mpi
 
       call finalize_state_writer()
@@ -122,6 +123,9 @@ contains
       if (mype_world==0) call PDAF_print_info(3)
       
       if (filtertype == 100)  call finalizeObs()
+
+      call finalize_obs()
+ 
       ! Deallocate PDAF arrays
       call PDAF_deallocate()
       call mpi_barrier(mpi_comm_world, mpierr)

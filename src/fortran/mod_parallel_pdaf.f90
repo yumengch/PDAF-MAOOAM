@@ -27,8 +27,8 @@ INTEGER :: mype_model  !< Number of PEs in COMM_model
 INTEGER :: npes_model  !< PE rank in COMM_model
 
 ! Additional variables for use with PDAF
-INTEGER :: n_modeltasks = 1         !< Number of parallel model tasks
-INTEGER :: n_filterpes  = 1         !< Number of PEs for filter analysis
+INTEGER :: n_modeltasks         !< Number of parallel model tasks
+INTEGER :: n_filterpes         !< Number of PEs for filter analysis
 INTEGER :: npes_world               !< Number of processes in MPI_COMM_WORLD
 INTEGER :: mype_world               !< Process rank in MPI_COMM_WORLD
 INTEGER :: COMM_filter              !< MPI communicator for filter PEs 

@@ -18,7 +18,7 @@
 
 module mod_U_PDAFomi_pdaf
 use mod_kind_pdaf, only: wp
-use mod_observations_pdaf, only: n_obs
+use mod_observations_pdaf, only: n_obs, obs_field_p_all
 implicit none
 
 integer :: timer_getobs_start, timer_getobs_end, t_rate
@@ -40,7 +40,8 @@ contains
       istart = 1
       do i_obs = 1, n_obs
          iend = istart + dim_state - 1
-         call writeObs(i_obs, step, observation_f(istart:iend))
+         ! call writeObs(i_obs, step, observation_f(istart:iend))
+         obs_field_p_all(:, i_obs) = observation_f(istart:iend)
          istart = iend + 1
       end do
       call SYSTEM_CLOCK(timer_getobs_end, t_rate)
@@ -206,3 +207,4 @@ contains
 
    END SUBROUTINE localize_covar_pdafomi
 end module mod_U_PDAFomi_pdaf
+
