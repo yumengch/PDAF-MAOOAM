@@ -33,7 +33,7 @@ integer :: timer_next_start, timer_next_end
 integer :: timer_prepost_start, timer_prepost_end
 real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
 contains
-   subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
+   subroutine init_ens_pdaf_freerun(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       use netcdf
       USE mod_model_pdaf, &             ! Model variables
          ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical
@@ -95,7 +95,28 @@ contains
       end if
       ierr = nf90_close(ncid)
       deallocate(eofV, svals)
+   end subroutine init_ens_pdaf_freerun
+
+   subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
+      implicit none
+      ! type of filter to initialize
+      integer, intent(in) :: filtertype
+      ! pe-local state dimension
+      integer, intent(in) :: dim_p
+      ! size of ensemble
+      integer, intent(in) :: dim_ens
+      ! pe-local model state
+      real(wp), intent(inout) :: state_p(dim_p)
+      ! array not referenced for ensemble filters
+      real(wp), intent(inout) :: uinv(dim_ens - 1,dim_ens - 1)
+      ! pe-local state ensemble
+      real(wp), intent(inout) :: ens_p(dim_p, dim_ens)
+      ! pdaf status flag
+      integer, intent(inout) :: status_pdaf
+
+      ens_p = 0.
    end subroutine init_ens_pdaf
+
 
    SUBROUTINE next_observation_pdaf(stepnow, nsteps, doexit, time)
       USE mod_parallel_pdaf, &    ! Parallelization variables
@@ -120,7 +141,7 @@ contains
       ! *******************************************************
       time = 0.0          ! Not used in this implementation
       delt_obs = minval(delt_obs_all)
-
+      print *, 'next', delt_obs, total_steps, stepnow
       IF (stepnow + delt_obs <= total_steps) THEN
          ! *** During the assimilation process ***
          nsteps = delt_obs   ! This assumes a constant time step interval
@@ -166,6 +187,15 @@ contains
       distr_dur = distr_dur + &
         (real(timer_distr_end, wp) - real(timer_distr_start, wp))/real(t_rate, wp)
    END SUBROUTINE distribute_state_pdaf
+
+   SUBROUTINE distribute_state_pdaf_init(dim_p, state_p)
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
+      REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
+
+   END SUBROUTINE distribute_state_pdaf_init
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
 

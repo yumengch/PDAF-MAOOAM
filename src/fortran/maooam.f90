@@ -32,10 +32,10 @@ PROGRAM maooam_pdaf
    ! initialise PDAF
    call init_pdaf(verbose)
 
-   t= current_time 
+   t= current_time(1) 
    if (writeout) &
       call write_model(t, 'f', field(1:), natm, noc)
-   print *, 'Starting the time evolution...'
+   if (mype_world == 0) print *, 'Starting the time evolution...'
    timer_model_dur = 0.
    timer_PDAF_dur = 0.   
    collect_dur = 0._wp
@@ -46,7 +46,8 @@ PROGRAM maooam_pdaf
    dimomi_dur = 0._wp
    op_dur = 0._wp
    DO it = 1, total_steps
-      IF (writeout .AND. mod(t,tw) < integr%dt) THEN
+      IF ((writeout .AND. mod(it-1, tw) < integr%dt) .or. (it == 1)) THEN
+         if (mype_world == 0 ) print *, 'a', it
          call write_model(t, 'a', field(1:), natm, noc)
       endif
       call SYSTEM_CLOCK(timer_model_start)
@@ -55,7 +56,8 @@ PROGRAM maooam_pdaf
       call SYSTEM_CLOCK(timer_model_end, t_rate)
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
-      IF (writeout .AND. mod(t,tw) < integr%dt) THEN
+      IF (writeout .AND. mod(it, tw) < integr%dt) THEN
+         if (mype_world == 0) print *, 'f', it
          call write_model(t, 'f', field(1:), natm, noc)
       end if
       call SYSTEM_CLOCK(timer_PDAF_start)

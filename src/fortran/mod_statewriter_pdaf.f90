@@ -3,7 +3,7 @@ use mod_kind_pdaf, only: wp
 use netcdf
 implicit none
 
-integer :: time_count(2)
+integer :: time_count
 integer :: ncid
 integer :: dimid(4)
 integer :: varid_time
@@ -16,7 +16,7 @@ contains
 
       integer :: ierr
       integer :: i, j
-      integer :: dimids(4, 3)
+      integer :: dimids(4, 4)
 
       character         :: vartype(2) = ['f', 'a']
       character(len=8)  :: typename(2) = ['forecast', 'analysis']
@@ -45,7 +45,7 @@ contains
          end do
       end do
       ierr = NF90_ENDDEF(ncid)
-      time_count(:) = 0
+      time_count = 0
    end subroutine init_state_writer
 
    subroutine setAttrs()
@@ -61,7 +61,7 @@ contains
    end subroutine setAttrs
 
    subroutine getVarAttrs(fieldnames, standard_name, long_name, dims)
-      integer, intent(out) :: dims(4, 3)
+      integer, intent(out) :: dims(4, 4)
       character(len=5), intent(out) :: fieldnames(4)
       character(len=40), intent(out) :: standard_name(4)
       character(len=50), intent(out) :: long_name(4)
@@ -107,16 +107,15 @@ contains
       integer :: i, ierr, i_ens
       integer :: i0,tc
 
-
+      print *, step, vartype, nx, ny, dim_ens
       if (vartype == 'f') then
          i0 = 0
-         time_count(1) = time_count(1) + 1
-         tc = time_count(1)
-         ierr = nf90_put_var(ncid, varid_time, [step], start=[tc], count=[1])
+         time_count = time_count + 1
+         tc = time_count
+         ierr = nf90_put_var(ncid, varid_time, [abs(step)], start=[tc], count=[1])
       else
          i0 = 4
-         time_count(2) = time_count(2) + 1
-         tc = time_count(2)
+         tc = time_count
       endif
 
       do i = 1, 4

@@ -5,6 +5,7 @@ use mod_observations_pdaf, only: n_obs
 use netcdf
 implicit none
 
+integer :: nxo, nyo
 integer, allocatable :: time_count(:)
 integer, allocatable :: ncid(:)
 integer, allocatable :: dimid(:, :)
@@ -28,6 +29,8 @@ contains
       allocate(varid(n_obs, 4))
 
       time_count = 0
+      nxo = nx/4 + 1
+      nyo = ny/4 + 1
       do i_obs = 1, n_obs
          ierr = nf90_create(trim(filenames(i_obs)), nf90_netcdf4, ncid(i_obs))
          ! set global attributes
@@ -37,8 +40,8 @@ contains
          ierr = nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) )
          ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' )
          ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'units', 'days since 1900-1-1 0:0:0' )
-         ierr = nf90_def_dim( ncid(i_obs), 'nx', nx, dimid(i_obs, 2) )
-         ierr = nf90_def_dim( ncid(i_obs), 'ny', ny, dimid(i_obs, 3) )
+         ierr = nf90_def_dim( ncid(i_obs), 'nx', nxo, dimid(i_obs, 2) )
+         ierr = nf90_def_dim( ncid(i_obs), 'ny', nyo, dimid(i_obs, 3) )
          ! initialise output variables
          call getVarAttrs(i_obs, varname, standard_name, long_name, dimids)
 
@@ -118,9 +121,9 @@ contains
 
       do i = 1, 4
          ierr = nf90_put_var(ncid(i_obs), varid(i_obs, i), &
-                             inputData((i-1)*nx*ny + 1: i*nx*ny), &
+                             inputData((i-1)*nxo*nyo + 1: i*nxo*nyo), &
                              start=[1, 1, time_count(i_obs)], &
-                             count=[nx, ny, 1] &
+                             count=[nxo, nyo, 1] &
                              )
       end do
    end subroutine writeObs

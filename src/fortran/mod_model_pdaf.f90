@@ -33,7 +33,7 @@ integer  :: noc
 integer  :: natm
 
 integer  :: total_steps
-real(wp) :: total_time, current_time
+real(wp) :: total_time, current_time(1)
 integer :: nx, ny
 
 real(wp), parameter   :: pi =  3.14159265358979323846
@@ -48,12 +48,13 @@ real(wp), allocatable :: T_o(:, :)
 
 logical :: writeout
 logical :: ln_restart
+logical :: is_freerun
 integer :: restart_it
-real(wp) :: tw
+integer :: tw
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it
+namelist /model_nml/ nx, ny, ln_restart, restart_it, is_freerun, tw
 
 interface basis
    real(wp) function basis(M, H, P, x, y)
@@ -82,10 +83,9 @@ contains
 
       total_time = maooam_model%model_configuration%integration%t_run
       dim_state = dim_state_p
-      total_steps = int(total_time/maooam_model%model_configuration%integration%dt)
 
       writeout = maooam_model%model_configuration%integration%writeout
-      tw = maooam_model%model_configuration%integration%tw
+      ! tw = maooam_model%model_configuration%integration%tw
 
       ! initialise the model writer
       if (writeout) &
@@ -97,11 +97,14 @@ contains
       
       if (ln_restart) then
          write(task_id_str, '(I3.3)') task_id
-         print *, task_id_str
          call read_restart('restart/maooam_'//trim(task_id_str)//'.nc', natm, noc, field(1:), restart_it)
       else
          restart_it = 1
+         current_time(1) = 0
       endif
+
+      total_steps = int(total_time/maooam_model%model_configuration%integration%dt)
+      print *, 'nt', total_steps
 
       ! get atmospheric components
       if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
