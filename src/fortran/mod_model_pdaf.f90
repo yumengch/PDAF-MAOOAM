@@ -21,7 +21,7 @@ use mod_kind_pdaf, only: wp
 use model_def, only: model
 use rk4_integrator, only: RK4Integrator
 use mod_romb_pdaf, only: romb
-use mod_parallel_pdaf, only: task_id, abort_parallel
+use mod_parallel_pdaf, only: task_id, abort_parallel, mype_world 
 use mod_ModelWriter_pdaf, only: init_model_writer, finalize_model_writer
 implicit none
 
@@ -70,8 +70,10 @@ contains
       integer :: ndim
       character(len=3)  :: task_id_str
 
-      print *, 'Model MAOOAM v1.4'
-      print *, 'Loading information...'
+      if (mype_world == 0) then
+         print *, 'Model MAOOAM v1.4'
+         print *, 'Loading information...'
+      end if
       ! initialise model configurations 
       CALL maooam_model%init
       CALL integr%init(maooam_model)
@@ -104,7 +106,6 @@ contains
       endif
 
       total_steps = int(total_time/maooam_model%model_configuration%integration%dt)
-      print *, 'nt', total_steps
 
       ! get atmospheric components
       if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))

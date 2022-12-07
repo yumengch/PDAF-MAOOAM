@@ -21,58 +21,71 @@ use mod_kind_pdaf, only: wp
 use PDAFomi, only: obs_f, obs_l
 use mod_parallel_pdaf, only: abort_parallel
 implicit none
-integer :: n_obs
-integer :: obssize
-integer, allocatable :: delt_obs_all(:)
-integer, allocatable :: nrows_all(:)
-real(wp), allocatable :: missing_value(:)
-real(wp), allocatable :: rms_obs_all(:)
-real(wp), allocatable :: obs_field_p_all(:, :)
-real(wp), allocatable :: var_obs(:, :)
+
+integer   :: n_obs
+integer   :: obssize
+integer   :: nvar
+integer   :: nxo, nyo
+character :: obsvar
+
+integer ,            allocatable :: delt_obs_all(:)
+integer ,            allocatable :: nrows_all(:)
+real(wp),            allocatable :: missing_value(:)
+real(wp),            allocatable :: rms_obs_all(:)
+real(wp),            allocatable :: obs_field_p_all(:, :, :, :)
+real(wp),            allocatable :: var_obs(:, :, :, :)
 type(obs_f), target, allocatable :: thisobs(:)
 type(obs_l), target, allocatable :: thisobs_l(:)
 
-character :: obsvar
-character(len=50), allocatable :: obsnames(:)
-character(len=50), allocatable :: filenames(:)
+integer,             allocatable :: time_count(:)
+character(len=50),   allocatable :: obsnames(:)
+character(len=50),   allocatable :: filenames(:)
 
 contains
    subroutine init()
-      use mod_model_pdaf, only: dim_state_p, dim_state, &
-                                 nx, ny
-      integer :: i_obs
-      integer :: nxo, nyo
+      use mod_model_pdaf, only: nx, ny
+      integer                        :: i_obs
       character(len=50), allocatable :: namelist_names(:)
       namelist /n_obs_nml/ n_obs
       namelist /obs_nml/ namelist_names, obsvar
 
+      ! read number of observation types
       open (20, file='PDAF_config.nml')
       read(20, nml=n_obs_nml)
       rewind(20)
 
+      ! allocate observation type-specific options
       allocate(namelist_names(n_obs))
       allocate(delt_obs_all(n_obs))
       allocate(nrows_all(n_obs), missing_value(n_obs))
       allocate(rms_obs_all(n_obs), thisobs(n_obs), thisobs_l(n_obs))
       allocate(filenames(n_obs), obsnames(n_obs))
+      allocate(time_count(n_obs))
+      time_count = 0
 
+      ! read filename of observation-related namelist
       read(20, nml=obs_nml)
       rewind(20)
       close(20)
 
+      ! get the size of the observation vector
       nxo = nx/4 + 1
       nyo = ny/4 + 1
-      if (obsvar == 'b') then
-         obssize = 4*nxo*nyo
-      else if ((obsvar == 'a') .or. (obsvar == 'o')) then
-         obssize = 2*nxo*nyo
+      nvar = 4
+      if ((obsvar == 'a') .or. (obsvar == 'o')) nvar = 2
+      print *, 'Observation dimensions:', nxo, nyo
+      if ((obsvar == 'b') .or. (obsvar == 'a') .or. (obsvar == 'o')) then
+         obssize = nvar*nxo*nyo
       else
          print *, 'Not implemented for', obsvar
          call abort_parallel()
       end if
-      allocate(obs_field_p_all(obssize, n_obs))
-      allocate(var_obs(obssize, n_obs))
 
+      ! observation vector and error variance
+      allocate(obs_field_p_all(nxo, nyo, nvar, n_obs))
+      allocate(var_obs(nxo, nyo, nvar, n_obs))
+
+      ! initialize observations
       do i_obs = 1, n_obs
          call init_single_obs(i_obs, trim(namelist_names(i_obs)))
       end do
@@ -80,17 +93,24 @@ contains
    end subroutine init
 
    subroutine init_single_obs(i_obs, nmlname)
-      use mod_model_pdaf, only: pi, maooam_model
+      use mod_model_pdaf   , only: pi, maooam_model
       use mod_parallel_pdaf, only: mype_filter
-      integer, intent(in) :: i_obs
+
+      integer     , intent(in) :: i_obs
       character(*), intent(in) :: nmlname
+
       character(len=50) :: obsname
-      character(len=50) :: filename, filename_var
-      integer :: doassim
-      integer :: delt_obs
+      character(len=50) :: filename
+      character(len=50) :: filename_var
+
+      integer  :: doassim
+      integer  :: delt_obs
+      integer  :: disttype
+      integer  :: ncoord
+      integer  :: nrows
+      integer  :: obs_err_type
+      integer  :: use_global_obs
       real(wp) :: rms_obs
-      integer :: disttype, ncoord, nrows
-      integer :: obs_err_type, use_global_obs
       
       namelist /setup_nml/ obsname, filename, filename_var, &
                            doassim, delt_obs, &
@@ -98,24 +118,31 @@ contains
                            nrows, obs_err_type, &
                            use_global_obs
 
+      ! read options for the observation
       open (20, file=nmlname)
       read(20, nml=setup_nml)
       rewind(20)
       close(20)
+
+      ! assign observation options
       thisobs(i_obs)%doassim = doassim
       delt_obs_all(i_obs) = delt_obs
       nrows_all(i_obs) = nrows
       rms_obs_all(i_obs) = rms_obs
       filenames(i_obs) = filename
       obsnames(i_obs) = obsname
+
       thisobs(i_obs)%disttype = disttype
       thisobs(i_obs)%ncoord = ncoord
       thisobs(i_obs)%obs_err_type = obs_err_type
       thisobs(i_obs)%use_global_obs = use_global_obs
+
       if (mype_filter == 0) &
           print *, 'Assimilate observations:', obsnames(i_obs)
 
-      call get_var_obs(i_obs, trim(filename_var), var_obs(:, i_obs))
+      ! read observation variance
+      call get_var_obs(i_obs, trim(filename_var), var_obs(:, :, :, i_obs))
+
       ! Size of domain for periodicity for disttype=1
       ! (<0 for no periodicity)
       allocate(thisobs(i_obs)%domainsize(ncoord))
@@ -126,79 +153,71 @@ contains
 
    subroutine init_dim_obs(i_obs, dim_obs)
       use mod_localization_pdaf, only: local_range
-      use mod_parallel_pdaf, only: mype_filter
-      use mod_model_pdaf, only: dim_state, &
-                                nx, ny, pi, maooam_model
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
       use PDAFomi, only: PDAFomi_gather_obs
-      integer, intent(in) :: i_obs
+
+      integer, intent(in)  :: i_obs
       integer, intent(out) :: dim_obs
 
-      integer  :: pe_start, pe_end
-      integer  :: i
-      integer  :: cnt_p, cnt
+      integer  :: i, j, k
+      integer  :: cnt
       integer  :: offset
       integer  :: dim_obs_p
-      integer  :: nxo, nyo, nobs
 
       real(wp) :: n
       real(wp) :: dx, dy
-      
-      ! real(wp) :: obs_field(dim_state)
+
       real(wp), allocatable :: obs_p(:)
       real(wp), allocatable :: ivar_obs_p(:)
-      real(wp), allocatable :: var_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
       call get_obs_field(i_obs, trim(filenames(i_obs)))
 
-      nxo = nx/4 + 1
-      nyo = ny/4 + 1
-      if ((obsvar == 'a') .or. (obsvar == 'o')) then
-         offset = 0
-         nobs = nxo*nyo*2
-      else
-         offset = 2*nx*ny
-         nobs = nxo*nyo*4
-      end if
+      offset = 0
+      if (obsvar == 'o') offset = 2*nx*ny
 
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)
       dy = pi/(ny - 1)
-      ! ! Count valid observations that
-      ! ! lie within the process sub-domain
-      ! pe_start = dim_state_p*mype_filter + 1
-      ! pe_end = dim_state_p*(mype_filter+1)
-      ! obs_field_p = obs_field(pe_start:pe_end)
 
       ! count valid observations
-      cnt_p = 0
-      do i = 1, nobs 
-         if (obs_field_p_all(i, i_obs) > missing_value(i_obs)) cnt_p = cnt_p + 1
+      cnt = 0
+      do k = 1, nvar
+         ! loop over spatial domain
+         do j = 1, nyo
+            do i = 1, nxo
+               if (obs_field_p_all(i, j, k, i_obs) > missing_value(i_obs)) cnt = cnt + 1
+            enddo
+         enddo
       end do
-      dim_obs_p = cnt_p
+      dim_obs_p = cnt
 
       ! Initialize vector of observations on the process sub-domain
       ! Initialize coordinate array of observations
       ! on the process sub-domain
       if (dim_obs_p > 0) then
-         allocate(obs_p(dim_obs_p), var_obs_p(dim_obs_p))
+         allocate(obs_p(dim_obs_p))
          allocate(thisobs(i_obs)%id_obs_p(nrows_all(i_obs), dim_obs_p))
          allocate(ocoord_p(thisobs(i_obs)%ncoord, dim_obs_p))
          allocate(ivar_obs_p(dim_obs_p))
 
          cnt = 1
-         do i = 1, dim_obs_p 
-            if (obs_field_p_all(i, i_obs) > missing_value(i_obs)) then
-               obs_p(cnt) = obs_field_p_all(i, i_obs)
-               var_obs_p(cnt) = var_obs(i, i_obs)
-               thisobs(i_obs)%id_obs_p(1, cnt) = 4*(i-1) + offset
-               ocoord_p(2, cnt) = int((mod(i-1, nxo*nyo)) / nxo)
-               ocoord_p(1, cnt) = (int(mod(i-1, nxo*nyo) -  ocoord_p(2,cnt)*nxo))*dx*4
-               ocoord_p(2, cnt) = ocoord_p(2, cnt)*dy*4
-               cnt = cnt + 1
-            end if
-            ivar_obs_p(i) = 1._wp/rms_obs_all(i_obs)/var_obs_p(i)
-            if (var_obs_p(i) < 1e-12) ivar_obs_p(i) = 0.
+         ! loop over 4 variables
+         do k = 1, nvar
+            ! loop over spatial domain
+            do j = 1, nyo
+               do i = 1, nxo
+                  if (obs_field_p_all(i, j, k, i_obs) > missing_value(i_obs)) then
+                     obs_p(cnt) = obs_field_p_all(i, j, k, i_obs)
+                     thisobs(i_obs)%id_obs_p(1, cnt) = offset + (k-1)*nx*ny + nx*4*(j-1) + (i-1)*4 + 1
+                     ocoord_p(1, cnt) = (i-1)*4*dx
+                     ocoord_p(2, cnt) = (j-1)*4*dy
+                     ivar_obs_p(cnt) = 1._wp/rms_obs_all(i_obs)/var_obs(i, j, k, i_obs)
+                     if (var_obs(i, j, k, i_obs) < 1e-12) ivar_obs_p(cnt) = 1e14
+                     cnt = cnt + 1
+                  end if
+               end do
+            end do
          end do
       else
          allocate(obs_p(1))
@@ -216,82 +235,56 @@ contains
 
    subroutine init_dim_obs_gen(i_obs, dim_obs)
       use mod_localization_pdaf, only: local_range
-      use mod_parallel_pdaf, only: mype_filter
-      use mod_model_pdaf, only: dim_state, &
-                                nx, ny, pi, maooam_model
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
       use PDAFomi, only: PDAFomi_gather_obs
       integer, intent(in)  :: i_obs
       integer, intent(out) :: dim_obs
 
-      integer  :: pe_start, pe_end
-      integer  :: i
-      integer  :: cnt_p, cnt
+      integer  :: i, j, k
+      integer  :: cnt
       integer  :: offset
       integer  :: dim_obs_p
-      integer  :: nxo, nyo, nobs
 
       real(wp) :: n
       real(wp) :: dx, dy
 
-      ! real(wp) :: obs_field_p(dim_state_p)
-      ! real(wp) :: obs_field(dim_state)
       real(wp), allocatable :: obs_p(:)
       real(wp), allocatable :: ivar_obs_p(:)
-      real(wp), allocatable :: var_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-      ! obs_field = 0._wp
-
-      nxo = nx/4 + 1
-      nyo = ny/4 + 1
-
-      if ((obsvar == 'a') .or. (obsvar == 'o')) then
-         offset = 0
-         nobs = 2*nxo*nyo
-      else
-         offset = 2*nx*ny
-         nobs = 4*nxo*nyo
-      end if
+      offset = 0
+      if (obsvar == 'o') offset = 2*nx*ny
 
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)
       dy = pi/(ny - 1)
-      ! Count valid observations that
-      ! lie within the process sub-domain
-      ! pe_start = dim_state_p*mype_filter + 1
-      ! pe_end = dim_state_p*(mype_filter+1)
-      ! obs_field_p = obs_field(pe_start:pe_end)
 
       ! count valid observations
-      cnt_p = 0
-      do i = 1, nobs 
-         if (obs_field_p_all(i, i_obs) > missing_value(i_obs)) cnt_p = cnt_p + 1
-      end do
-      dim_obs_p = cnt_p
+      dim_obs_p = obssize
 
       ! Initialize vector of observations on the process sub-domain
       ! Initialize coordinate array of observations
       ! on the process sub-domain
       if (dim_obs_p > 0) then
-         allocate(obs_p(dim_obs_p), var_obs_p(dim_obs_p))
+         allocate(obs_p(dim_obs_p))
          allocate(thisobs(i_obs)%id_obs_p(nrows_all(i_obs), dim_obs_p))
          allocate(ocoord_p(thisobs(i_obs)%ncoord, dim_obs_p))
          allocate(ivar_obs_p(dim_obs_p))
-
-
          cnt = 1
-         do i = 1, dim_obs_p
-            if (obs_field_p_all(i, i_obs) > missing_value(i_obs)) then
-               obs_p(cnt) = obs_field_p_all(i, i_obs)
-               var_obs_p(cnt) = var_obs(i, i_obs)
-               thisobs(i_obs)%id_obs_p(1, cnt) = i + offset
-               ocoord_p(2, cnt) = int((mod(i-1, nxo*nyo)) / nxo)
-               ocoord_p(1, cnt) = (int(mod(i-1, nxo*nyo) - ocoord_p(2,cnt)*nxo))*4*dx
-               ocoord_p(2, cnt) = ocoord_p(2, cnt)*4*dy
-               cnt = cnt + 1
-            end if
-            ivar_obs_p(i) = 1._wp/rms_obs_all(i_obs)/var_obs_p(i)
-            if (var_obs_p(i) < 1e-12) ivar_obs_p(i) = 0.
+         ! loop over 4 variables
+         do k = 1, nvar
+            ! loop over spatial domain
+            do j = 1, nyo
+               do i = 1, nxo
+                  obs_p(cnt) = obs_field_p_all(i, j, k, i_obs)
+                  thisobs(i_obs)%id_obs_p(1, cnt) = offset + (k-1)*nx*ny + nx*4*(j-1) + (i-1)*4 + 1
+                  ocoord_p(1, cnt) = (i-1)*4*dx
+                  ocoord_p(2, cnt) = (j-1)*4*dy
+                  ivar_obs_p(cnt) = 1._wp/rms_obs_all(i_obs)/var_obs(i, j, k, i_obs)
+                  if (var_obs(i, j, k, i_obs) < 1e-12) ivar_obs_p(i) = 1e14
+                  cnt = cnt + 1
+               end do
+            end do
          end do
       else
          allocate(obs_p(1))
@@ -308,56 +301,21 @@ contains
    end subroutine init_dim_obs_gen
 
    subroutine get_obs_field(i_obs, filename)
-      use mod_model_pdaf, only: nx, ny
       use netcdf
       integer,      intent(in)    :: i_obs
       character(*), intent(in)    :: filename
 
-      integer, save, allocatable :: time_count(:)
       integer :: ncid, varid
       integer :: ierr
-      integer :: i
-      integer :: nxo, nyo
-      character(len=5) :: varname(4)
-
-      if (.not. allocated(time_count)) then
-          allocate(time_count(n_obs))
-          time_count = 0
-      end if
- 
-      time_count(i_obs) = time_count(i_obs) + 1
-      ierr = nf90_open(filename, nf90_nowrite, ncid)
-
-      varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
-      nxo = nx/4 + 1
-      nyo = ny/4 + 1
-
-      do i = 1, 4
-         ierr = nf90_inq_varid(ncid, trim(varname(i)), varid)
-         ierr = nf90_get_var(ncid, varid, &
-                             obs_field_p_all((i-1)*nxo*nyo + 1: i*nxo*nyo, i_obs), &
-                             start=[1, 1, time_count(i_obs)], count=[nxo, nyo, 1])
-      end do
-      ierr = nf90_close(ncid)
-   end subroutine get_obs_field
-
-   subroutine get_var_obs(i_obs, filename, var_obs)
-      use mod_model_pdaf, only: nx, ny
-      use netcdf
-      integer,      intent(in)    :: i_obs
-      character(*), intent(in)    :: filename
-      real(wp),     intent(inout) :: var_obs(:)
-
-      integer :: ncid, varid
-      integer :: ierr
-      integer :: i
+      integer :: i, cnt
       integer :: i_start, i_end
-      integer :: nxo, nyo
       character(len=5) :: varname(4)
 
-      ierr = nf90_open(filename, nf90_nowrite, ncid)
+      time_count(i_obs) = time_count(i_obs) + 1
+      varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
 
-      varname = [character(len=5) :: 'psi_a', 'T_a_v', 'psi_o', 'T_o_v']
+      ierr = nf90_open(filename, nf90_nowrite, ncid)
+      ! choose observed variables
       i_start = 1
       i_end = 4
       if (obsvar == 'a') then
@@ -366,14 +324,52 @@ contains
          i_start = 3
       endif
 
-      nxo = nx/4 + 1
-      nyo = ny/4 + 1
-      print *, 'Observation dimensions:', nxo, nyo
+      ! read observations
+      cnt = 1
       do i = i_start, i_end
          ierr = nf90_inq_varid(ncid, trim(varname(i)), varid)
          ierr = nf90_get_var(ncid, varid, &
-                             var_obs((i-1)*nxo*nyo + 1:i*nxo*nyo), &
+                             obs_field_p_all(:, :, cnt, i_obs), &
+                             start=[1, 1, time_count(i_obs)], count=[nxo, nyo, 1])
+         cnt = cnt + 1
+      end do
+      ierr = nf90_close(ncid)
+   end subroutine get_obs_field
+
+   subroutine get_var_obs(i_obs, filename, var_obs_i)
+      use netcdf
+      integer,      intent(in)    :: i_obs
+      character(*), intent(in)    :: filename
+      real(wp),     intent(inout) :: var_obs_i(:, :, :)
+
+      integer :: ncid, varid
+      integer :: ierr
+      integer :: i, cnt
+      integer :: i_start, i_end
+      character(len=10) :: varname(4)
+
+      varname = [character(len=10) :: 'psi_a_var', 'T_a_var', 'psi_o_var', 'T_o_var']
+
+      ! open NC file
+      ierr = nf90_open(filename, nf90_nowrite, ncid)
+
+      ! choose observed variables
+      i_start = 1
+      i_end = 4
+      if (obsvar == 'a') then
+         i_end = 2
+      else if (obsvar == 'o') then
+         i_start = 3
+      endif
+
+      ! read observations
+      cnt = 1
+      do i = i_start, i_end
+         ierr = nf90_inq_varid(ncid, trim(varname(i)), varid)
+         ierr = nf90_get_var(ncid, varid, &
+                             var_obs_i(:, :, cnt), &
                              start=[1, 1], count=[nxo, nyo])
+         cnt = cnt + 1
       end do
       ierr = nf90_close(ncid)
    end subroutine get_var_obs
@@ -383,9 +379,9 @@ contains
       IMPLICIT NONE
 
       ! *** Arguments ***
-      integer, intent(in) :: i_obs
-      INTEGER, INTENT(in) :: dim_p                 !< PE-local state dimension
-      INTEGER, INTENT(in) :: dim_obs               !< Dimension of full observed state (all observed fields)
+      integer,  intent(in)    :: i_obs
+      INTEGER,  INTENT(in)    :: dim_p                 !< PE-local state dimension
+      INTEGER,  INTENT(in)    :: dim_obs               !< Dimension of full observed state (all observed fields)
       REAL(wp), INTENT(in)    :: state_p(dim_p)        !< PE-local model state
       REAL(wp), INTENT(inout) :: ostate(dim_obs)       !< Full observed state
 
@@ -409,7 +405,7 @@ contains
       IMPLICIT NONE
 
       ! *** Arguments ***
-      integer, intent(in)  :: i_obs
+      integer, intent(in)    :: i_obs
       INTEGER, INTENT(inout) :: dim_obs_l  !< Local dimension of observation vector
 
       ! **********************************************
@@ -452,8 +448,9 @@ contains
       deallocate(nrows_all, missing_value)
       deallocate(rms_obs_all, thisobs, thisobs_l)
       deallocate(filenames, obsnames)
+
       deallocate(obs_field_p_all)
       deallocate(var_obs)
+      deallocate(time_count)
    end subroutine finalize_obs
 end module mod_observations_pdaf
-

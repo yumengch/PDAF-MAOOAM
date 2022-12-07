@@ -44,6 +44,22 @@ INTEGER, ALLOCATABLE :: local_npes_model(:) !< Number of processes per ensemble
 
 CONTAINS
    !-------------------------------------------------------------------------------
+   !> init MPI
+   !!
+   !! Routine to initialize MPI
+   !!
+   SUBROUTINE initialize_parallel_pdaf()
+
+      IMPLICIT NONE
+
+      LOGICAL :: iniflag            ! Flag whether MPI is initialized
+
+      ! *** Initialize MPI if not yet initialized ***
+      CALL MPI_Initialized(iniflag, MPIerr)
+      IF (.not.iniflag) CALL MPI_Init(MPIerr)
+   END SUBROUTINE initialize_parallel_pdaf
+
+   !-------------------------------------------------------------------------------
    !> Finalize MPI
    !!
    !! Routine to finalize MPI

@@ -14,7 +14,7 @@ integer          :: offset(5)
 character(len=7) :: varnames(4)
 
 integer :: ncid_o
-integer :: varid_o(4)
+integer :: varid_o(8)
 
 integer :: nx, ny, nt
 integer :: natm, noc, nmod
@@ -27,10 +27,10 @@ real(wp), allocatable :: T_a(:, :)
 real(wp), allocatable :: psi_o(:, :)
 real(wp), allocatable :: T_o(:, :)
 
-real(wp), allocatable :: psi_a_std(:, :)
-real(wp), allocatable :: T_a_std(:, :)
-real(wp), allocatable :: psi_o_std(:, :)
-real(wp), allocatable :: T_o_std(:, :)
+real(wp), allocatable :: psi_a_var(:, :)
+real(wp), allocatable :: T_a_var(:, :)
+real(wp), allocatable :: psi_o_var(:, :)
+real(wp), allocatable :: T_o_var(:, :)
 
 real(wp), allocatable :: psi_a_mean(:, :)
 real(wp), allocatable :: T_a_mean(:, :)
@@ -63,10 +63,10 @@ if (.not. allocated(T_a)  ) allocate(T_a(nx, ny))
 if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
 if (.not. allocated(T_o)  ) allocate(T_o(nx, ny))
 
-if (.not. allocated(psi_a_std)) allocate(psi_a_std(nx, ny))
-if (.not. allocated(T_a_std)  ) allocate(T_a_std(nx, ny))
-if (.not. allocated(psi_o_std)) allocate(psi_o_std(nx, ny))
-if (.not. allocated(T_o_std)  ) allocate(T_o_std(nx, ny))
+if (.not. allocated(psi_a_var)) allocate(psi_a_var(nx, ny))
+if (.not. allocated(T_a_var)  ) allocate(T_a_var(nx, ny))
+if (.not. allocated(psi_o_var)) allocate(psi_o_var(nx, ny))
+if (.not. allocated(T_o_var)  ) allocate(T_o_var(nx, ny))
 
 if (.not. allocated(psi_a_mean)) allocate(psi_a_mean(nx, ny))
 if (.not. allocated(T_a_mean)  ) allocate(T_a_mean(nx, ny))
@@ -77,6 +77,8 @@ psi_a_mean = 0._wp
 T_a_mean = 0._wp
 psi_o_mean = 0._wp
 T_o_mean = 0._wp
+print *, 1._wp/nt
+! nt = 100
 dt = 1._wp/nt
 do it = 1, nt 
    do i = 1, 4
@@ -93,12 +95,16 @@ do it = 1, nt
    T_o_mean = T_o_mean + T_o*dt
 end do
 
+write(*, '(/a/)') 'The min max of the temporal mean'
 print *, minval(psi_a_mean), maxval(psi_a_mean)
+print *, minval(T_a_mean), maxval(T_a_mean)
+print *, minval(psi_o_mean), maxval(psi_o_mean)
+print *, minval(T_a_mean), maxval(T_a_mean)
 
-psi_a_std = 0.
-T_a_std = 0.
-psi_o_std = 0.
-T_o_std = 0.
+psi_a_var = 0.
+T_a_var = 0.
+psi_o_var = 0.
+T_o_var = 0.
 do it = 1, nt
    do i = 1, 4
       ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
@@ -108,24 +114,32 @@ do it = 1, nt
    ! transform from Fourier to physical space
    call toPhysical(maooam_model, nx, ny, coeffs, &
                    psi_a, T_a, psi_o, T_o)
-   psi_a_std = psi_a_std + dt*(psi_a - psi_a_mean)*(psi_a - psi_a_mean) 
-   T_a_std = T_a_std + dt*(T_a - T_a_mean)*(T_a - T_a_mean) 
-   psi_o_std = psi_o_std + dt*(psi_o - psi_o_mean)*(psi_o - psi_o_mean) 
-   T_o_std = T_o_std + dt*(T_o - T_o_mean)*(T_o - T_o_mean) 
+   psi_a_var = psi_a_var + dt*(psi_a - psi_a_mean)*(psi_a - psi_a_mean) 
+   T_a_var = T_a_var + dt*(T_a - T_a_mean)*(T_a - T_a_mean) 
+   psi_o_var = psi_o_var + dt*(psi_o - psi_o_mean)*(psi_o - psi_o_mean) 
+   T_o_var = T_o_var + dt*(T_o - T_o_mean)*(T_o - T_o_mean) 
 end do
 
-print *, minval(psi_a_std), maxval(psi_a_std)
+write(*, '(/a/)') 'The min max of the  variance'
+print *, minval(psi_a_var), maxval(psi_a_var)
+print *, minval(T_a_var), maxval(T_a_var)
+print *, minval(psi_o_var), maxval(psi_o_var)
+print *, minval(T_o_var), maxval(T_o_var)
+
 deallocate(psi_a, T_a, psi_o, T_o)
-deallocate(psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
+
 
 ierr = nf90_close(ncid)
 
 call init_writer('traj_var.nc', nx, ny, ncid_o, varid_o)
-call writestd(ncid_o, varid_o, nx, ny, psi_a_std, T_a_std, psi_o_std, T_o_std)
+call write_var(ncid_o, varid_o, nx, ny, &
+               psi_a_var, T_a_var, psi_o_var, T_o_var, &
+               psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
 call finalize_writer(ncid_o)
 
 deallocate(coeffs)
-
+deallocate(psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
+deallocate(psi_a_var, T_a_var, psi_o_var, T_o_var)
 contains
    real(wp) function Fa(M, H, P, n, nx, ny, x, y)
       integer,  intent(in) :: nx, ny
@@ -373,16 +387,16 @@ contains
       character(*), intent(in) :: filename
       integer, intent(in)      :: nx, ny
       integer, intent(inout)   :: ncid_o
-      integer, intent(inout)   :: varid_o(4)
+      integer, intent(inout)   :: varid_o(8)
 
       integer :: ierr
       integer :: i, j
       integer :: dimid(2)
-      integer :: dimids(4, 2)
+      integer :: dimids(8, 2)
 
-      character(len=5)  :: fieldnames(4)
-      character(len=40) :: standard_name(4)
-      character(len=50) :: long_name(4)
+      character(len=10)  :: fieldnames(8)
+      character(len=40) :: standard_name(8)
+      character(len=50) :: long_name(8)
 
 
       ierr = nf90_create(filename, nf90_netcdf4, ncid_o)
@@ -403,24 +417,37 @@ contains
 
       ! initialise output variables
       ! set variable attributes
-      fieldnames = [character(len=5) :: 'psi_a_var', 'T_a_var', 'psi_o_var', 'T_o_var']
+      fieldnames = [character(len=10) :: 'psi_a_var', 'T_a_var', 'psi_o_var', 'T_o_var', &
+                                        'psi_a_mean', 'T_a_mean', 'psi_o_mean', 'T_o_mean']
       standard_name = [character(len=40):: 'variance_atmosphere_streamfunction', &
-                       'variance_atmosphere_temperature', &
-                       'variance_ocean_streamfunction', &
-                       'variance_ocean_temperature' &
+                                           'variance_atmosphere_temperature', &
+                                           'variance_ocean_streamfunction', &
+                                           'variance_ocean_temperature', &
+                                           'mean_atmosphere_streamfunction', &
+                                           'mean_atmosphere_temperature', &
+                                           'mean_ocean_streamfunction', &
+                                           'mean_ocean_temperature' &
                        ]
       long_name = [character(len=50) :: 'variance of streamfunction in the atmosphere', &
-                   'variance of temperature in the atmosphere', &
-                   'variance of streamfunction in the ocean', &
-                   'variance of temperature in the ocean' &
+                                        'variance of temperature in the atmosphere', &
+                                        'variance of streamfunction in the ocean', &
+                                        'variance of temperature in the ocean', &
+                                        'mean of streamfunction in the atmosphere', &
+                                        'mean of temperature in the atmosphere', &
+                                        'mean of streamfunction in the ocean', &
+                                        'mean of temperature in the ocean' &
                    ]
 
       dimids = reshape([dimid(1), dimid(2), &
-              dimid(1), dimid(2), &
-              dimid(1), dimid(2), &
-              dimid(1), dimid(2)], shape(dimids), order=[2, 1])
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2), &
+                        dimid(1), dimid(2)], shape(dimids), order=[2, 1])
 
-      do j = 1, 4
+      do j = 1, 8
          ierr = nf90_def_var(ncid_o, trim(fieldnames(j)), nf90_double, dimids(j, :), varid_o(j))
          ierr = nf90_put_att(ncid_o, varid_o(j), 'standard_name', trim( standard_name(j) ) )
          ierr = nf90_put_att(ncid_o, varid_o(j), 'long_name', trim(long_name(j)))
@@ -428,39 +455,66 @@ contains
       ierr = NF90_ENDDEF(ncid_o)
    end subroutine init_writer
 
-   subroutine writestd(ncid_o, varid_o, nx, ny, psi_a_std, T_a_std, psi_o_std, T_o_std)
+   subroutine write_var(ncid_o, varid_o, nx, ny, &
+                        psi_a_var, T_a_var, psi_o_var, T_o_var, &
+                        psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
       integer,   intent(in) :: ncid_o
-      integer,   intent(in) :: varid_o(4)
+      integer,   intent(in) :: varid_o(8)
       integer,   intent(in) :: nx, ny
-      real(wp),  intent(in) :: psi_a_std(:, :)
-      real(wp),  intent(in) :: T_a_std(:, :)
-      real(wp),  intent(in) :: psi_o_std(:, :)
-      real(wp),  intent(in) :: T_o_std(:, :)
+      real(wp),  intent(in) :: psi_a_var(:, :)
+      real(wp),  intent(in) :: T_a_var(:, :)
+      real(wp),  intent(in) :: psi_o_var(:, :)
+      real(wp),  intent(in) :: T_o_var(:, :)
+      real(wp),  intent(in) :: psi_a_mean(:, :)
+      real(wp),  intent(in) :: T_a_mean(:, :)
+      real(wp),  intent(in) :: psi_o_mean(:, :)
+      real(wp),  intent(in) :: T_o_mean(:, :)
 
 
       integer :: ierr
 
       ierr = nf90_put_var(ncid_o, varid_o(1), &
-                          psi_a_std, &
+                          psi_a_var, &
                           start=[1, 1], &
                           count=[nx, ny] &
                           )
       ierr = nf90_put_var(ncid_o, varid_o(2), &
-                          T_a_std, &
+                          T_a_var, &
                           start=[1, 1], &
                           count=[nx, ny] &
                           )
       ierr = nf90_put_var(ncid_o, varid_o(3), &
-                          psi_o_std, &
+                          psi_o_var, &
                           start=[1, 1], &
                           count=[nx, ny] &
                           )
       ierr = nf90_put_var(ncid_o, varid_o(4), &
-                          T_o_std, &
+                          T_o_var, &
                           start=[1, 1], &
                           count=[nx, ny] &
                           )
-   end subroutine writestd
+
+      ierr = nf90_put_var(ncid_o, varid_o(5), &
+                          psi_a_mean, &
+                          start=[1, 1], &
+                          count=[nx, ny] &
+                          )
+      ierr = nf90_put_var(ncid_o, varid_o(6), &
+                          T_a_mean, &
+                          start=[1, 1], &
+                          count=[nx, ny] &
+                          )
+      ierr = nf90_put_var(ncid_o, varid_o(7), &
+                          psi_o_mean, &
+                          start=[1, 1], &
+                          count=[nx, ny] &
+                          )
+      ierr = nf90_put_var(ncid_o, varid_o(8), &
+                          T_o_mean, &
+                          start=[1, 1], &
+                          count=[nx, ny] &
+                          )
+   end subroutine write_var
 
    subroutine finalize_writer(ncid_o)
       integer, intent(in) :: ncid_o

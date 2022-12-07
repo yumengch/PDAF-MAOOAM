@@ -164,7 +164,7 @@ contains
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier, toPhysical, field, natm, noc
+         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier, toPhysical
 
       IMPLICIT NONE
 
@@ -173,6 +173,7 @@ contains
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
 
       call SYSTEM_CLOCK(timer_distr_start)
+
       ! *************************************************
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
@@ -200,7 +201,7 @@ contains
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
 
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: psi_a, T_a, psi_o, T_o, toPhysical, nx, ny, field
+         ONLY: psi_a, T_a, psi_o, T_o, toPhysical, nx, ny
 
       IMPLICIT NONE
 

@@ -1,16 +1,16 @@
 module mod_ObsWriter_pdaf
 use mod_kind_pdaf, only: wp
 use mod_model_pdaf, only: nx, ny, dim_ens
-use mod_observations_pdaf, only: n_obs
+use mod_observations_pdaf, only: n_obs, nxo, nyo
 use netcdf
 implicit none
 
-integer :: nxo, nyo
 integer, allocatable :: time_count(:)
 integer, allocatable :: ncid(:)
 integer, allocatable :: dimid(:, :)
 integer, allocatable :: varid_time(:)
 integer, allocatable :: varid(:, :)
+
 contains
    subroutine init_obs_writer(filenames)
       character(*), intent(in) :: filenames(:)
@@ -29,8 +29,6 @@ contains
       allocate(varid(n_obs, 4))
 
       time_count = 0
-      nxo = nx/4 + 1
-      nyo = ny/4 + 1
       do i_obs = 1, n_obs
          ierr = nf90_create(trim(filenames(i_obs)), nf90_netcdf4, ncid(i_obs))
          ! set global attributes

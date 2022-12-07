@@ -8,7 +8,8 @@ PROGRAM maooam_pdaf
                     integr, field, field_new, &
                     current_time
    use mod_config_pdaf, only: verbose, read_namelist
-   use mod_parallel_pdaf, only: mype_world, init_parallel_pdaf, finalize_parallel_pdaf
+   use mod_parallel_pdaf, only: initialize_parallel_pdaf, mype_world, &
+                                init_parallel_pdaf, finalize_parallel_pdaf
    use mod_init_pdaf, only: init_pdaf, finalize_pdaf
    use mod_ModelWriter_pdaf, only: write_model
    use mod_assimilate_pdaf, only: assimilate_pdaf
@@ -17,14 +18,15 @@ PROGRAM maooam_pdaf
 
    implicit none
    REAL(wp) :: t=0.D0  !< Time variable
-   integer :: timer_model_start, timer_model_end, t_rate
-   integer :: timer_PDAF_start, timer_PDAF_end
+   integer  :: timer_model_start, timer_model_end, t_rate
+   integer  :: timer_PDAF_start, timer_PDAF_end
    real(wp) :: timer_model_dur
    real(wp) :: timer_PDAF_dur
 
    integer  :: it
 
    ! Initialise parallization
+   call initialize_parallel_pdaf()
    call read_namelist()
    call init_parallel_pdaf(dim_ens, verbose)
    ! initialise model
