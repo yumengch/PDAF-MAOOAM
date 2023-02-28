@@ -1,13 +1,13 @@
-MODEL_DIR=../../MAOOAM-1.4/fortran
+MODEL_DIR=../../../../MAOOAM-1.4/fortran
 
-NETCDF_INC=-I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.7/gnu/9.1/include
-NETCDF_LIB=-L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.7/gnu/9.1/lib -L/opt/cray/pe/hdf5-parallel/1.12.0.7/lib -lnetcdff -lnetcdf -lhdf5_hl -lhdf5 -lz 
+NETCDF_INC=-I/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/include
+NETCDF_LIB=-L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-c-4.8.1-okwvugrilg2h3nnql5i6bhlz6mz24swi/lib -lnetcdf -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/lib -lnetcdff -ldl -lm
 
 # Define relevant compiler options for debug case and normal case for each compiler
 COMPILER_FLAGS = $(NETCDF_INC) -O2 -cpp
 LD_FLAGS = $(NETCDF_LIB)
 
-FC=ftn
+FC=gfortran
 
 SHELL = /bin/sh
 DEBUG = false

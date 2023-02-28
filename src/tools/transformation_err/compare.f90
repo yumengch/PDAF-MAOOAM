@@ -45,7 +45,7 @@ nmod = maooam_model%model_configuration%modes%ndim
 if (.not. allocated(coeffs)) allocate(coeffs(nmod))
 if (.not. allocated(coeffs_trans)) allocate(coeffs_trans(nmod))
 
-ierr = nf90_open('trajectory.nc', nf90_nowrite, ncid)
+call check( nf90_open('trajectory.nc', nf90_nowrite, ncid) )
 varnames = [character(len=7) :: 'psi_a_f', 'T_a_f', 'psi_o_f', 'T_o_f']
 dims = [natm, natm, noc, noc]
 offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
@@ -65,12 +65,16 @@ do i_sample = 1, n_sample
       if (.not. allocated(T_a)) allocate(T_a(nx, ny))
       if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
       if (.not. allocated(T_o)) allocate(T_o(nx, ny))
-      
+       
       do it = 1, nt
          do i = 1, 4
-            ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
-            ierr = nf90_get_var(ncid, varid, coeffs(offset(i)+1:offset(i+1)), &
-                                start=[1, 1+floor(20224719*time(it))], count=[dims(i), 1]) 
+            call check( nf90_inq_varid(ncid, trim(varnames(i)), varid) )
+            call check( nf90_get_var(ncid, varid, coeffs(offset(i)+1:offset(i+1)), &
+                                    start=[1, 1+floor(800000*time(it))], &
+                                           count=[dims(i), 1] &
+                                    ) &
+                      )
+            
          end do
          ! transform from Fourier to physical space
          call toPhysical(maooam_model, nx, ny, coeffs, &
@@ -86,7 +90,7 @@ end do
 error = error/nt/n_sample
 print *, error
 deallocate(time, error)
-ierr = nf90_close(ncid)
+call check( nf90_close(ncid) )
 
 deallocate(coeffs)
 
@@ -332,4 +336,17 @@ contains
       states(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
       states(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
    end subroutine FieldtoState
+
+   subroutine check(status)
+      use netcdf
+
+      ! *** Aruments ***
+      integer, intent ( in) :: status   ! Reading status
+
+      if(status /= nf90_noerr) then
+         print *, trim(nf90_strerror(status))
+         stop 
+      end if
+
+   end subroutine check
 end program genCovar

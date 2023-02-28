@@ -56,7 +56,7 @@ offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
 ierr = nf90_inq_dimid(ncid, 'time', dimid)
 ierr = nf90_inquire_dimension(ncid, dimid, len=nt)
 print *, nt
-nx = 257
+nx = 129
 ny = nx
 if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
 if (.not. allocated(T_a)  ) allocate(T_a(nx, ny))
