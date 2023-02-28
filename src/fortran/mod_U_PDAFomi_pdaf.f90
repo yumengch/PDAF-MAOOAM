@@ -29,7 +29,6 @@ real(wp) :: getobs_dur, dimomi_dur, op_dur
 contains
    ! write the synthetic observations into netcdf file
    subroutine get_obs_f(step, dim_obs_f, observation_f)
-      use mod_observations_pdaf, only: obssize
       use mod_obswriter_pdaf, only: writeobs
       ! arguments
       integer,  intent(in)  :: step                     ! current time step
@@ -40,12 +39,7 @@ contains
 
       call system_clock(timer_getobs_start)
 
-      istart = 1
-      do i_obs = 1, n_obs
-         iend = istart + obssize - 1
-         call writeobs(i_obs, step, observation_f(istart:iend))
-         istart = iend + 1
-      end do
+      call writeobs(1, step, observation_f)
 
       call system_clock(timer_getobs_end, t_rate)
       getobs_dur = getobs_dur + &
@@ -90,7 +84,7 @@ contains
 
       dim_obs = 0
       do i_obs = 1, n_obs
-         call init_dim_obs(i_obs, this_dim_obs)
+         call init_dim_obs(i_obs, step, this_dim_obs)
          dim_obs = dim_obs + this_dim_obs
       end do
 

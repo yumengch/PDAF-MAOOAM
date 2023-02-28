@@ -89,7 +89,8 @@ contains
 
       if (filterpe) &
          call init_state_writer('maooam_state.nc', nx, ny, dim_ens)
-      call initObs()
+
+      if (.not. is_freerun) call initObs()
       if (filtertype == 100) call init_obs_writer(filenames)
 
       if (is_freerun) then
@@ -126,6 +127,7 @@ contains
       use mod_StateWriter_pdaf, only: finalize_state_writer 
       use mod_obswriter_pdaf, only: finalizeObs
       use mod_observations_pdaf, only: finalize_obs
+      use mod_model_pdaf, only: is_freerun
       use mpi
 
       if (filterpe) call finalize_state_writer()
@@ -138,7 +140,7 @@ contains
       
       if (filtertype == 100)  call finalizeObs()
 
-      call finalize_obs()
+      if (.not. is_freerun) call finalize_obs()
  
       ! Deallocate PDAF arrays
       call PDAF_deallocate()

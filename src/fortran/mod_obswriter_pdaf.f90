@@ -3,6 +3,7 @@ use mod_kind_pdaf, only: wp
 use mod_model_pdaf, only: nx, ny, dim_ens
 use mod_observations_pdaf, only: n_obs, nxo, nyo
 use netcdf
+use mod_nfcheck_pdaf, only: check
 implicit none
 
 integer, allocatable :: time_count(:)
@@ -15,7 +16,6 @@ contains
    subroutine init_obs_writer(filenames)
       character(*), intent(in) :: filenames(:)
 
-      integer :: ierr
       integer :: j
       integer :: i_obs
       integer :: dimids(4, 3)
@@ -30,40 +30,39 @@ contains
 
       time_count = 0
       do i_obs = 1, n_obs
-         ierr = nf90_create(trim(filenames(i_obs)), nf90_netcdf4, ncid(i_obs))
+         call check( nf90_create(trim(filenames(i_obs)), nf90_netcdf4, ncid(i_obs)) )
          ! set global attributes
          call setAttrs(i_obs)
          ! initialise dimensions
-         ierr = nf90_def_dim( ncid(i_obs), 'time', nf90_unlimited, dimid(i_obs, 1) )
-         ierr = nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) )
-         ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' )
-         ierr = nf90_put_att( ncid(i_obs), varid_time(i_obs), 'units', 'days since 1900-1-1 0:0:0' )
-         ierr = nf90_def_dim( ncid(i_obs), 'nx', nxo, dimid(i_obs, 2) )
-         ierr = nf90_def_dim( ncid(i_obs), 'ny', nyo, dimid(i_obs, 3) )
+         call check( nf90_def_dim( ncid(i_obs), 'time', nf90_unlimited, dimid(i_obs, 1) ) )
+         call check( nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) ) )
+         call check( nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' ) )
+         call check( nf90_put_att( ncid(i_obs), varid_time(i_obs), 'units', 'days since 1900-1-1 0:0:0' ) )
+         call check( nf90_def_dim( ncid(i_obs), 'nx', nxo, dimid(i_obs, 2) ) )
+         call check( nf90_def_dim( ncid(i_obs), 'ny', nyo, dimid(i_obs, 3) ) )
          ! initialise output variables
          call getVarAttrs(i_obs, varname, standard_name, long_name, dimids)
 
          do j = 1, 4
-            ierr = nf90_def_var(ncid(i_obs), trim(varname(j)), nf90_double, dimids(j, :), varid(i_obs, j))
-            ierr = nf90_put_att(ncid(i_obs), varid(i_obs, j), 'standard_name', trim(standard_name(j)))
-            ierr = nf90_put_att(ncid(i_obs), varid(i_obs, j), 'long_name', trim(long_name(j)))
+            call check( nf90_def_var(ncid(i_obs), trim(varname(j)), nf90_double, dimids(j, :), varid(i_obs, j)) )
+            call check( nf90_put_att(ncid(i_obs), varid(i_obs, j), 'standard_name', trim(standard_name(j))) )
+            call check( nf90_put_att(ncid(i_obs), varid(i_obs, j), 'long_name', trim(long_name(j))) )
          end do
-         ierr = NF90_ENDDEF(ncid(i_obs))
+         call check( NF90_ENDDEF(ncid(i_obs)) )
       end do
    end subroutine init_obs_writer
 
    subroutine setAttrs(i_obs)
       integer, intent(in) :: i_obs
-      integer :: ierr
       
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'Conventions', 'CF-1.8')
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'title', &
-      'NetCDF output of synthetic observations from MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'institution', &
-      'NCEO-AWI-UoR')
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'history', iso8601()//': Data created')
-      ierr = nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF')
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'Conventions', 'CF-1.8') )
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'title', &
+      'NetCDF output of synthetic observations from MAOOAM-pyPDAF') )
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'institution', &
+      'NCEO-AWI-UoR') )
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF') )
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'history', iso8601()//': Data created') )
+      call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF') )
    end subroutine setAttrs
 
    function iso8601() result(datetime)
@@ -110,27 +109,26 @@ contains
       integer, intent(in) :: step
       real(wp), intent(in) :: inputData(:)
 
-      integer :: i, ierr
+      integer :: i
 
       time_count(i_obs) = time_count(i_obs) + 1
-      ierr = nf90_put_var(ncid(i_obs), varid_time(i_obs), &
+      call check( nf90_put_var(ncid(i_obs), varid_time(i_obs), &
                           [real(step, wp)], &
-                          start=[time_count(i_obs)], count=[1])
+                          start=[time_count(i_obs)], count=[1]) )
 
       do i = 1, 4
-         ierr = nf90_put_var(ncid(i_obs), varid(i_obs, i), &
+         call check( nf90_put_var(ncid(i_obs), varid(i_obs, i), &
                              inputData((i-1)*nxo*nyo + 1: i*nxo*nyo), &
                              start=[1, 1, time_count(i_obs)], &
                              count=[nxo, nyo, 1] &
-                             )
+                             ))
       end do
    end subroutine writeObs
 
    subroutine finalizeObs()
-      integer :: ierr
       integer :: i_obs
       do i_obs = 1, n_obs
-         ierr = nf90_close(ncid(i_obs))
+         call check( nf90_close(ncid(i_obs)) )
       end do
    end subroutine finalizeObs
 end module mod_ObsWriter_pdaf

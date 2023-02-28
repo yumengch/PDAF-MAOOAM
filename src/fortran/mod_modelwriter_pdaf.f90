@@ -3,6 +3,7 @@ use mod_kind_pdaf, only: wp
 use mod_parallel_pdaf, only: task_id 
 use mpi
 use netcdf
+use mod_nfcheck_pdaf, only: check
 implicit none
 
 integer :: time_count(2) = 0
@@ -15,7 +16,6 @@ contains
    subroutine init_model_writer(natm, noc, dim_ens)
       integer, intent(in)      :: natm, noc, dim_ens
 
-      integer :: ierr
       integer :: i, j
       integer :: dimids(4, 2)
 
@@ -30,43 +30,42 @@ contains
       allocate(ncid(dim_ens), dimid(dim_ens, 3), varid_time(dim_ens), varid(dim_ens, 8))
 
       write(task_id_str, '(I3.3)') task_id
-      ierr = nf90_create('maooam_'//trim(task_id_str)//'.nc', nf90_netcdf4, ncid(task_id))
+      call check( nf90_create('maooam_'//trim(task_id_str)//'.nc', nf90_netcdf4, ncid(task_id)) )
       ! set global attributes
       call setAttrs
       ! initialise dimensions
-      ierr = nf90_def_dim( ncid(task_id), 'time', nf90_unlimited, dimid(task_id, 1) )
-      ierr = nf90_def_var( ncid(task_id), 'time', nf90_double, dimid(task_id, 1), varid_time(task_id) )
-      ierr = nf90_put_att( ncid(task_id), varid_time(task_id), 'long_name', 'time' )
-      ierr = nf90_put_att( ncid(task_id), varid_time(task_id), 'units', 'seconds since 1900-1-1 0:0:0' )
-      ierr = nf90_def_dim( ncid(task_id), 'natm', natm, dimid(task_id, 2) )
-      ierr = nf90_def_dim( ncid(task_id), 'noc', noc, dimid(task_id, 3) )
+      call check(  nf90_def_dim( ncid(task_id), 'time', nf90_unlimited, dimid(task_id, 1) ) )
+      call check(  nf90_def_var( ncid(task_id), 'time', nf90_double, dimid(task_id, 1), varid_time(task_id) ) )
+      call check(  nf90_put_att( ncid(task_id), varid_time(task_id), 'long_name', 'time' ) )
+      call check(  nf90_put_att( ncid(task_id), varid_time(task_id), 'units', 'seconds since 1900-1-1 0:0:0' ) )
+      call check(  nf90_def_dim( ncid(task_id), 'natm', natm, dimid(task_id, 2) ) )
+      call check(  nf90_def_dim( ncid(task_id), 'noc', noc, dimid(task_id, 3) ) )
       ! initialise output variables
       call getVarAttrs(varname, standard_name, long_name, dimids)
       do i = 1, 2
          do j = 1, 4
-            ierr = nf90_def_var(ncid(task_id), trim(varname(j))//'_'//vartype(i), &
-                                nf90_double, dimids(j, :), varid(task_id, (i-1)*4+j))
-            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
+            call check( nf90_def_var(ncid(task_id), trim(varname(j))//'_'//vartype(i), &
+                                nf90_double, dimids(j, :), varid(task_id, (i-1)*4+j)) )
+            call check( nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
                                 'standard_name', &
-                                trim(standard_name(j))//'_'//trim(typename(i)))
-            ierr = nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
+                                trim(standard_name(j))//'_'//trim(typename(i))) )
+            call check( nf90_put_att(ncid(task_id), varid(task_id, (i-1)*4+j), &
                                 'long_name', &
-                                trim(typename(i))//' of '//trim(long_name(j)))
+                                trim(typename(i))//' of '//trim(long_name(j))) )
          end do
       end do
-      ierr = NF90_ENDDEF(ncid(task_id))
+      call check( NF90_ENDDEF(ncid(task_id)) )
    end subroutine init_model_writer
 
    subroutine setAttrs()
-      integer :: ierr
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'Conventions', 'CF-1.8')
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'title', &
-      'NetCDF output from MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'institution', &
-      'NCEO-AWI-UoR')
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF')
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'history', iso8601()//': Data created')
-      ierr = nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF')
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'Conventions', 'CF-1.8') )
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'title', &
+      'NetCDF output from MAOOAM-pyPDAF') )
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'institution', &
+      'NCEO-AWI-UoR') )
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'source', 'MAOOAM-pyPDAF') )
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'history', iso8601()//': Data created') )
+      call check( nf90_put_att(ncid(task_id),  NF90_GLOBAL, 'reference', 'https://github.com/yumengch/pyPDAF') )
    end subroutine setAttrs
 
    subroutine getVarAttrs(fieldnames, standard_name, long_name, dims)
@@ -115,14 +114,14 @@ contains
 
       integer :: offsets(5)
       integer :: dims(4)
-      integer :: i, ierr, tc
+      integer :: i, tc
       integer :: i0
 
       if (vartype == 'f') then
          i0 = 0
          time_count(1) = time_count(1) + 1
          tc = time_count(1)
-         ierr = nf90_put_var(ncid(task_id), varid_time(task_id), [step], start=[time_count(1)], count=[1])
+         call check( nf90_put_var(ncid(task_id), varid_time(task_id), [step], start=[time_count(1)], count=[1]) )
       else
          i0 = 4
          time_count(2) = time_count(2) + 1
@@ -134,18 +133,18 @@ contains
       dims = [natm, natm, noc, noc]
 
       do i = 1, 4
-         ierr = nf90_put_var(ncid(task_id), varid(task_id, i0 + i), &
+         call check( nf90_put_var(ncid(task_id), varid(task_id, i0 + i), &
                              inputData(offsets(i)+1:offsets(i+1)), &
                              start=[1, tc], &
                              count=[dims(i), 1] &
-                             )
+                             ) )
       end do
-      ierr = nf90_sync(ncid(task_id))
+      call check( nf90_sync(ncid(task_id)) )
    end subroutine write_model
 
    subroutine finalize_model_writer()
       integer :: ierr
-      ierr = nf90_close(ncid(task_id))
+      call check( nf90_close(ncid(task_id)) )
       call MPI_Barrier(MPI_COMM_WORLD, ierr)
       deallocate(ncid, dimid, varid_time, varid)
    end subroutine finalize_model_writer

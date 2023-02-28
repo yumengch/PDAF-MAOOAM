@@ -37,6 +37,7 @@ contains
       use netcdf
       USE mod_model_pdaf, &             ! Model variables
          ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical
+      use mod_nfcheck_pdaf, only: check
       use pdaf_interfaces_module, only: PDAF_sampleens
       implicit none
       ! type of filter to initialize
@@ -57,21 +58,20 @@ contains
       ! local variables
       integer :: ncid, dimid, varid
       integer :: i, j
-      integer :: ierr
       integer :: rank
       real(wp), allocatable :: eofV(:, :)
       real(wp), allocatable :: svals(:)
       character(len=5) :: varname(4)
 
       varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
-      ierr = nf90_open('covariance.nc', nf90_nowrite, ncid)
+      call check( nf90_open('covariance.nc', nf90_nowrite, ncid) )
       
-      ierr = nf90_inq_dimid(ncid, 'rank', dimid)
-      ierr = nf90_inquire_dimension(ncid, dimid, len=rank)
+      call check( nf90_inq_dimid(ncid, 'rank', dimid) )
+      call check( nf90_inquire_dimension(ncid, dimid, len=rank) )
 
       allocate(svals(rank))
-      ierr = nf90_inq_varid(ncid, 'sigma', varid)
-      ierr = nf90_get_var(ncid, varid, svals, start=[1], count=[rank]) 
+      call check( nf90_inq_varid(ncid, 'sigma', varid) )
+      call check( nf90_get_var(ncid, varid, svals, start=[1], count=[rank]) )
 
       allocate(eofV(dim_ens - 1, dim_p))
 
@@ -84,8 +84,8 @@ contains
       if (dim_ens > 1) then
          do j = 1, dim_ens - 1
             do i = 1, 4
-               ierr = nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid)
-               ierr = nf90_get_var(ncid, varid, eofV(j, (i-1)*nx*ny+1:i*nx*ny), start=[1, 1, 1], count=[nx, ny, 1])
+               call check( nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid) )
+               call check( nf90_get_var(ncid, varid, eofV(j, (i-1)*nx*ny+1:i*nx*ny), start=[1, 1, 1], count=[nx, ny, 1]) )
             end do
          end do
 
@@ -93,7 +93,7 @@ contains
       else
          ens_p(:, 1) = state_p
       end if
-      ierr = nf90_close(ncid)
+      call check( nf90_close(ncid) )
       deallocate(eofV, svals)
    end subroutine init_ens_pdaf_freerun
 
@@ -117,12 +117,11 @@ contains
       ens_p = 0.
    end subroutine init_ens_pdaf
 
-
    SUBROUTINE next_observation_pdaf(stepnow, nsteps, doexit, time)
       USE mod_parallel_pdaf, &    ! Parallelization variables
          ONLY: mype_world
       USE mod_model_pdaf, &            ! Model variables
-         ONLY: total_steps
+         ONLY: total_steps, is_freerun
       USE mod_observations_pdaf, &
          ONLY: delt_obs_all
       IMPLICIT NONE
@@ -140,8 +139,8 @@ contains
       ! *** Set number of time steps until next observation ***
       ! *******************************************************
       time = 0.0          ! Not used in this implementation
-      delt_obs = minval(delt_obs_all)
-      print *, 'next', delt_obs, total_steps, stepnow
+      delt_obs = 90
+      if (.not. is_freerun) delt_obs = minval(delt_obs_all)
       IF (stepnow + delt_obs <= total_steps) THEN
          ! *** During the assimilation process ***
          nsteps = delt_obs   ! This assumes a constant time step interval
@@ -303,13 +302,13 @@ contains
 
       if (mype_filter == 0) print*, 'RMS error: ', rmserror_est
 
-      if (step <= 0) then
-         print *, '---writing ensemble forecast---'
-         call write_state(-step*integr%dt, 'f', ens_p, nx, ny, dim_ens)
-      else
-         print *, '---writing ensemble analysis---'
-         call write_state(step*integr%dt, 'a', ens_p, nx, ny, dim_ens)
-      endif
+      ! if (step <= 0) then
+      !    print *, '---writing ensemble forecast---'
+      !    call write_state(-step*integr%dt, 'f', ens_p, nx, ny, dim_ens)
+      ! else
+      !    print *, '---writing ensemble analysis---'
+      !    call write_state(step*integr%dt, 'a', ens_p, nx, ny, dim_ens)
+      ! endif
 
       firsttime = .false.
       call SYSTEM_CLOCK(timer_prepost_end, t_rate)

@@ -116,6 +116,7 @@ contains
 
    subroutine read_restart(filename, natm, noc, fields, it)
       use netcdf
+      use mod_nfcheck_pdaf, only: check
       character(*), intent(in)    :: filename
       integer,      intent(in)    :: natm, noc
       real(wp),     intent(inout) :: fields(:)
@@ -126,7 +127,6 @@ contains
       integer          :: varid
       integer          :: dimid
       integer          :: i, nt
-      integer          :: ierr
       integer          :: dim(4)
       integer          :: offset(5)
       character(len=7) :: varnames(4)
@@ -135,26 +135,25 @@ contains
       dim = [natm, natm, noc, noc]
       offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
 
-      ierr = nf90_open(filename, nf90_nowrite, ncid)
-      ierr = nf90_inq_dimid(ncid, 'time', dimid)
-      ierr = nf90_inquire_dimension(ncid, dimid, len=nt)
+      call check( nf90_open(filename, nf90_nowrite, ncid) )
+      call check( nf90_inq_dimid(ncid, 'time', dimid) )
+      call check( nf90_inquire_dimension(ncid, dimid, len=nt) )
 
       if (it > nt) then
          print *, 'The selected restart time step is larger than the time steps in the restart file.'
          call abort_parallel()
       end if
 
-      ierr = nf90_inq_varid(ncid, 'time', varid)
-      ierr = nf90_get_var(ncid, varid, current_time, &
-                          start=[it], count=[1])
+      call check( nf90_inq_varid(ncid, 'time', varid) )
+      call check( nf90_get_var(ncid, varid, current_time, &
+                          start=[it], count=[1]) )
 
       do i = 1, 4
-         ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
-         ierr = nf90_get_var(ncid, varid, fields(offset(i)+1:offset(i+1)), &
-                             start=[1, it], count=[dim(i), 1]) 
+         call check( nf90_inq_varid(ncid, trim(varnames(i)), varid) )
+         call check( nf90_get_var(ncid, varid, fields(offset(i)+1:offset(i+1)), &
+                             start=[1, it], count=[dim(i), 1]) )
       end do
-      ierr = nf90_close(ncid)
-
+      call check( nf90_close(ncid) )
    end subroutine read_restart
 
    real(wp) function Fa(M, H, P, x, y)

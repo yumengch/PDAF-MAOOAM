@@ -20,12 +20,10 @@ module mod_localization_pdaf
 use mod_kind_pdaf, only: wp
 implicit none
 
-integer :: loc_weight
-real(wp) :: local_range
-real(wp) :: srange
+
 integer, allocatable :: id_lstate_in_pstate(:)
 real(wp) :: coords_l(2)
-namelist /local_nml/ loc_weight, local_range, srange
+
 contains
    SUBROUTINE init_dim_l_pdaf(step, domain_p, dim_l)
       USE mod_model_pdaf, &             ! Model variables

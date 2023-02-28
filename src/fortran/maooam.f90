@@ -6,7 +6,7 @@ PROGRAM maooam_pdaf
                     finalize_model, total_steps, &
                     writeout, tw, restart_it,&
                     integr, field, field_new, &
-                    current_time
+                    current_time, is_freerun
    use mod_config_pdaf, only: verbose, read_namelist
    use mod_parallel_pdaf, only: initialize_parallel_pdaf, mype_world, &
                                 init_parallel_pdaf, finalize_parallel_pdaf
@@ -37,6 +37,7 @@ PROGRAM maooam_pdaf
    t= current_time(1) 
    if (writeout) &
       call write_model(t, 'f', field(1:), natm, noc)
+
    if (mype_world == 0) print *, 'Starting the time evolution...'
    timer_model_dur = 0.
    timer_PDAF_dur = 0.   
@@ -47,29 +48,33 @@ PROGRAM maooam_pdaf
    getobs_dur = 0._wp
    dimomi_dur = 0._wp
    op_dur = 0._wp
+
    DO it = 1, total_steps
       IF ((writeout .AND. mod(it-1, tw) < integr%dt) .or. (it == 1)) THEN
          if (mype_world == 0 ) print *, 'a', it
          call write_model(t, 'a', field(1:), natm, noc)
       endif
+
       call SYSTEM_CLOCK(timer_model_start)
       CALL integr%step(field, t, field_new)
       field = field_new
       call SYSTEM_CLOCK(timer_model_end, t_rate)
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
+
       IF (writeout .AND. mod(it, tw) < integr%dt) THEN
          if (mype_world == 0) print *, 'f', it
          call write_model(t, 'f', field(1:), natm, noc)
       end if
+
       call SYSTEM_CLOCK(timer_PDAF_start)
-      call assimilate_pdaf()
+      if (.not. is_freerun) call assimilate_pdaf()
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)
- 
+
    END DO
-   print *, 'Evolution finished.'
+   if (mype_world == 0)  print *, 'Evolution finished.'
 
    print *, 'model evolution:', timer_model_dur
    print *, 'total assimilation time', timer_pdaf_dur
@@ -80,6 +85,7 @@ PROGRAM maooam_pdaf
    print *, 'user-defined observation output:'     , getobs_dur
    print *, 'user-defined initialise observation:' , dimomi_dur
    print *, 'user-defined observation operator:'   , op_dur
+
    call finalize_model()
    CALL finalize_pdaf()
    call finalize_parallel_pdaf()

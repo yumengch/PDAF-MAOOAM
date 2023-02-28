@@ -1,6 +1,7 @@
 module mod_StateWriter_pdaf
 use mod_kind_pdaf, only: wp
 use netcdf
+use mod_nfcheck_pdaf, only: check
 implicit none
 
 integer :: time_count
@@ -14,7 +15,6 @@ contains
       character(*), intent(in) :: filename
       integer, intent(in)      :: nx, ny, dim_ens
 
-      integer :: ierr
       integer :: i, j
       integer :: dimids(4, 4)
 
@@ -24,27 +24,27 @@ contains
       character(len=40) :: standard_name(4)
       character(len=50) :: long_name(4)
 
-      ierr = nf90_create(filename, nf90_netcdf4, ncid)
+      call check( nf90_create(filename, nf90_netcdf4, ncid) )
       ! set global attributes
       call setAttrs
       ! initialise dimensions
-      ierr = nf90_def_dim( ncid, 'time', nf90_unlimited, dimid(1) )
-      ierr = nf90_def_var( ncid, 'time', nf90_double, dimid(1), varid_time )
-      ierr = nf90_put_att( ncid, varid_time, 'long_name', 'time' )
-      ierr = nf90_put_att( ncid, varid_time, 'units', 'seconds since 1900-1-1 0:0:0' )
-      ierr = nf90_def_dim( ncid, 'ens', dim_ens, dimid(2) )
-      ierr = nf90_def_dim( ncid, 'nx', nx, dimid(3) )
-      ierr = nf90_def_dim( ncid, 'ny', ny, dimid(4) )
+      call check( nf90_def_dim( ncid, 'time', nf90_unlimited, dimid(1) ) )
+      call check( nf90_def_var( ncid, 'time', nf90_double, dimid(1), varid_time ) )
+      call check( nf90_put_att( ncid, varid_time, 'long_name', 'time' ) )
+      call check( nf90_put_att( ncid, varid_time, 'units', 'seconds since 1900-1-1 0:0:0' ) )
+      call check( nf90_def_dim( ncid, 'ens', dim_ens, dimid(2) ) )
+      call check( nf90_def_dim( ncid, 'nx', nx, dimid(3) ) )
+      call check( nf90_def_dim( ncid, 'ny', ny, dimid(4) ) )
       ! initialise output variables
       call getVarAttrs(varname, standard_name, long_name, dimids)
       do i = 1, 2
          do j = 1, 4
-            ierr = nf90_def_var(ncid, trim(varname(j))//'_'//vartype(i), nf90_double, dimids(j, :), varid((i-1)*4+j))
-            ierr = nf90_put_att(ncid, varid((i-1)*4+j), 'standard_name', trim(standard_name(j))//'_'//trim(typename(i)))
-            ierr = nf90_put_att(ncid, varid((i-1)*4+j), 'long_name', trim(typename(i))//' of '//trim(long_name(j)))
+            call check( nf90_def_var(ncid, trim(varname(j))//'_'//vartype(i), nf90_double, dimids(j, :), varid((i-1)*4+j)) )
+            call check( nf90_put_att(ncid, varid((i-1)*4+j), 'standard_name', trim(standard_name(j))//'_'//trim(typename(i))) )
+            call check( nf90_put_att(ncid, varid((i-1)*4+j), 'long_name', trim(typename(i))//' of '//trim(long_name(j))) )
          end do
       end do
-      ierr = NF90_ENDDEF(ncid)
+      call check( NF90_ENDDEF(ncid) )
       time_count = 0
    end subroutine init_state_writer
 

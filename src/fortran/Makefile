@@ -39,6 +39,7 @@ MODEL_OBJECTS = $(MODEL_DIR)/params.o \
 PDAF_OBJECTS = mod_kind_pdaf.o \
           mod_romb_pdaf.o \
 		  mod_parallel_pdaf.o \
+          mod_nfcheck_pdaf.o \
 		  mod_filteroptions_pdaf.o \
 		  mod_inflation_pdaf.o \
 		  mod_statewriter_pdaf.o \
