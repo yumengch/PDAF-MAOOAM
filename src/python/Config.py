@@ -11,6 +11,7 @@ class PDAFConfig:
 
         self.config = configparser.ConfigParser()
         self.config.read(configfile)
+        print (self.config)
 
     def __getitem__(self, key):
         return self.config[key]

@@ -19,17 +19,18 @@ module mod_init_pdaf
 use mod_kind_pdaf, only: wp
 use mod_parallel_pdaf, &
    only: comm_model, comm_couple, comm_filter, &
-         task_id, filterpe, n_modeltasks, mype_world, &
+         task_id, filterpe, dim_ens => n_modeltasks, mype_world, &
          abort_parallel
 use mod_filteroptions_pdaf, only: filtertype, subtype, &
-                         rank_analysis_enkf, &
-                         incremental, type_sqrt, type_trans
+                                  type_sqrt, type_trans, &
+                                  incremental
 use mod_inflation_pdaf, only: type_forget, forget
 implicit none
 
 contains
    subroutine setEnKFOptions(filter_param_i, filter_param_r)
-      use mod_model_pdaf, only: dim_state_p, dim_ens
+      use mod_filteroptions_pdaf, only: rank_analysis_enkf
+      use mod_statevector_pdaf, only: dim_state_p
       integer,   intent(inout) :: filter_param_i(:)
       real(wp),  intent(inout) :: filter_param_r(:)
 
@@ -43,7 +44,7 @@ contains
    end subroutine setEnKFOptions
 
    subroutine setETKFOptions(filter_param_i, filter_param_r)
-      use mod_model_pdaf, only: dim_state_p, dim_ens
+      use mod_statevector_pdaf, only: dim_state_p
       integer,   intent(inout) :: filter_param_i(:)
       real(wp),  intent(inout) :: filter_param_r(:)
 
@@ -60,13 +61,10 @@ contains
 
    subroutine init_pdaf(screen)
       use pdaf_interfaces_module, only: PDAF_init, PDAF_get_state
-      use mod_U_pdaf, only: init_ens_pdaf, init_ens_pdaf_freerun, &
-                            distribute_state_pdaf, distribute_state_pdaf_init, &
+      use mod_U_pdaf, only: init_ens_pdaf, &
+                            distribute_state_pdaf, &
                             next_observation_pdaf,prepoststep_ens_pdaf
-      use mod_obswriter_pdaf, only: init_obs_writer
-      use mod_observations_pdaf, only: initObs => init, filenames
-      use mod_StateWriter_pdaf, only: init_state_writer
-      use mod_model_pdaf, only: nx, ny, dim_ens, is_freerun
+      use mod_model_pdaf, only: nx, ny, dim_ens
       integer, intent(in) :: screen
 
       integer           :: filter_param_i(7) ! Integer parameter array for filter
@@ -87,23 +85,10 @@ contains
          call setETKFOptions(filter_param_i, filter_param_r)
       endif
 
-      if (filterpe) &
-         call init_state_writer('maooam_state.nc', nx, ny, dim_ens)
-
-      if (.not. is_freerun) call initObs()
-      if (filtertype == 100) call init_obs_writer(filenames)
-
-      if (is_freerun) then
-          call PDAF_init(filtertype, subtype, 0, filter_param_i, n_param_i, &
-                         filter_param_r, 2, comm_model, comm_filter, &
-                         comm_couple, task_id, n_modeltasks, filterpe, &
-                         init_ens_pdaf_freerun, screen, status_pdaf)
-      else
-          call PDAF_init(filtertype, subtype, 0, filter_param_i, n_param_i, &
-                         filter_param_r, 2, comm_model, comm_filter, &
-                         comm_couple, task_id, n_modeltasks, filterpe, &
-                         init_ens_pdaf, screen, status_pdaf)
-      end if
+      call PDAF_init(filtertype, subtype, 0, filter_param_i, n_param_i, &
+                     filter_param_r, 2, comm_model, comm_filter, &
+                     comm_couple, task_id, dim_ens, filterpe, &
+                     init_ens_pdaf, screen, status_pdaf)
 
       if (status_pdaf /= 0) then
          write (*,'(/1x,a6,i3,a43,i4,a1/)') &
@@ -111,13 +96,9 @@ contains
              ' in initialization of pdaf - stopping! (pe ', mype_world,')'
          call abort_parallel()
       end if
-      if (is_freerun) then
-          call PDAF_get_state(steps, timenow, doexit, next_observation_pdaf, distribute_state_pdaf, &
-                              prepoststep_ens_pdaf, status_pdaf)
-      else
-          call PDAF_get_state(steps, timenow, doexit, next_observation_pdaf, distribute_state_pdaf_init, &
-                              prepoststep_ens_pdaf, status_pdaf)
-      end if
+
+      call PDAF_get_state(steps, timenow, doexit, next_observation_pdaf, distribute_state_pdaf, &
+                          prepoststep_ens_pdaf, status_pdaf)
    end subroutine init_pdaf
 
    subroutine finalize_pdaf()
@@ -127,7 +108,6 @@ contains
       use mod_StateWriter_pdaf, only: finalize_state_writer 
       use mod_obswriter_pdaf, only: finalizeObs
       use mod_observations_pdaf, only: finalize_obs
-      use mod_model_pdaf, only: is_freerun
       use mpi
 
       if (filterpe) call finalize_state_writer()
@@ -140,7 +120,7 @@ contains
       
       if (filtertype == 100)  call finalizeObs()
 
-      if (.not. is_freerun) call finalize_obs()
+      call finalize_obs()
  
       ! Deallocate PDAF arrays
       call PDAF_deallocate()

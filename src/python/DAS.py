@@ -1,3 +1,4 @@
+
 """This file is part of pyPDAF
 
 Copyright (C) 2022 University of Reading and
@@ -17,105 +18,126 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import pyPDAF.PDAF.PDAFomi as PDAFomi
+import U_PDAF
+import U_PDAFomi
 import PDAF_caller
-from StateWriter import StateWriter
+
+from parallelization import parallelization
+from ObsFactory import ObsFactory
+from StateVector import StateVector
+from FilterOptions import FilterOptions
+from Inflation import Inflation
+from Localization import Localization
+from Model import Model
+from ModelWriter import ModelWriter
 
 
 class DAS:
-
     """Data assimilation system
 
     Attributes
     ----------
+    pe : `parallelization.parallelization`
+        parallelization object
     sv : `StateVector.StateVector`
         an object of StateVector
     options : `FilterOptions.FilterOptions`
         filtering options
-    infl : `Inflation.Inflation`
-        inflation object
     local : `Localization.Localization`
         localization object
     model : `Model.Model`
         model object
     obs : `ObsFactory.ObsFactory`
         a factory of observations
-    pe : `parallelization.parallelization`
-        parallelization object
+
     screen : int
         verbosity of PDAF screen output
+    isStrong : bool
+        Whether strong coupling is used
     """
 
-    def __init__(self, pe, model, obs, screen):
+    def __init__(self):
         """constructor
-
-        Parameters
-        ----------
-        pe : `parallelization.parallelization`
-            parallelization object
-        model : `Model.Model`
-            model object
-        obs : `Obs.Obs`
-            observation object
-        screen : int
-            verbosity of PDAF screen output
         """
-        self.pe = pe
-        self.model = model
-        self.obs = obs
-        self.screen = screen
 
-    def init(self, sv, options, infl, local):
+    def init(self, config):
         """initialise DA system
 
         Parameters
         ----------
-        sv : `StateVector.StateVector`
-            an object of StateVector
-        options : `FilterOptions.FilterOptions`
-            filtering options
-        infl : `Inflation.Inflation`
-            inflation object
-        local : `Localization.Localization`
-            a localization info obejct
+        config : `Config.PDAFConfig`
+            configuration object
         """
+        # init DAS options
+        self.screen = config['Global'].getint('screen', 3)
+        self.isStrong = config['Global'].getboolean('isStrong', True)
+        self.is_freerun = config['Global'].getboolean('is_freerun', False)
+        # init parallelisation
+        self.pe = parallelization(config['Ensemble'], self.screen)
         # init model
-        self.model.init_field()
+        self.model = Model(config['Model'], self.pe.task_id)
+        # init obs
+        self.obs = ObsFactory(config['Obs'], self.pe.mype_world, self.model)
+        # init options
+        self.sv = StateVector(config['StateVector'], self.model, self.pe.n_modeltasks, self.isStrong)
+        self.options = FilterOptions(config['FilterOptions'])
+        self.infl = Inflation(config['Inflation'])
+        # init obs. output
+        if self.options.filtertype == 100:
+            self.obs.setWriter(self.pe, self.model)
 
-
-        # Initialize PDAF
-        self.sv = sv
-        self.options = options
-        self.infl = infl
-        self.local = local
+        # Initial Screen output
+        if (self.pe.mype_world == 0):
+            print('+++++ pyPDAF online mode +++++')
+            print('+++++ MAOOAM +++++')
 
         if self.pe.filterpe:
             # init observations
             PDAFomi.init(self.obs.nobs)
 
-        self.writer = None
-        if self.pe.filterpe:
-            self.writer = StateWriter('MAOOAM.nc', self.sv.dim_ens, self.model)
-        if self.options.filtertype == 100:
-            self.obs.setWriter(self.pe, self.model)
+        self.UserFuncs = U_PDAF.PDAFUserFuncs(self)
+        self.UserFuncsO = U_PDAFomi.PDAFomiUserFuncs(self)
+        PDAF_caller.init_pdaf(self)
+        self.UserFuncs.firsttime = False
 
-        PDAF_caller.init_pdaf(self.sv, self.infl,
-                              self.options,
-                              self.local,
-                              self.model, self.pe,
-                              self.obs, self.writer, self.screen)
-
-    def forward(self, step, usePDAF):
+    def forward(self):
         """time forward DA system
 
         Parameters
         ----------
-        step : int
-            current time step
-        usePDAF : bool
-            whether PDAF is used
+        isStrong : bool
+            Whether strong coupling is used
         """
-        self.model.step(self.pe, step, usePDAF)
-        if usePDAF:
-            PDAF_caller.assimilate_pdaf(self.model, self.obs, self.pe,
-                                        self.sv, self.local, self.writer,
-                                        self.options.filtertype)
+        t = self.model.t0
+        for step in range(self.model.total_steps):
+            # output for analysis
+            if (step % self.model.tw) < self.model.dt:
+                if self.pe.mype_world == 0: print(('a', step))
+                self.model.writer.write(t, 'a', self.model.field_p)
+            #model  forward
+            t = self.model.step(step)
+            # output for forecast
+            if ((step + 1) % self.model.tw) < self.model.dt:
+                if self.pe.mype_world == 0: print(('f', step))
+                self.model.writer.write(t, 'f', self.model.field_p)
+
+            if ((not self.isStrong) and (self.sv.component == 'ao')):
+                self.sv.setFields('a')
+                self.obs['ObsA'].doassim = 1
+                self.obs['ObsO'].doassim = 0
+            PDAF_caller.assimilate_pdaf(self)
+
+            if ((not self.isStrong) and (self.sv.component == 'ao')):
+                self.sv.setFields('o')
+                self.obs['ObsA'].doassim = 0
+                self.obs['ObsO'].doassim = 1
+                PDAF_caller.assimilate_pdaf(self)
+
+
+    def __del__(self):
+        import pyPDAF.PDAF as PDAF
+        if (self.pe.mype_world==0): PDAF.print_info(2)
+        if (self.pe.mype_world==0): PDAF.print_info(11)
+        if (self.pe.mype_world==0): PDAF.print_info(3)
+
+        PDAF.deallocate()

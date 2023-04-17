@@ -21,19 +21,16 @@ use mod_kind_pdaf, only: wp
 use model_def, only: model
 use rk4_integrator, only: RK4Integrator
 use mod_romb_pdaf, only: romb
-use mod_parallel_pdaf, only: task_id, abort_parallel, mype_world 
-use mod_ModelWriter_pdaf, only: init_model_writer, finalize_model_writer
+use mod_parallel_pdaf, only: task_id, abort_parallel, mype_world, dim_ens => n_modeltasks
+use mod_ModelWriter_pdaf, only: init_model_writer, finalize_model_writer, write_model
 implicit none
 
-! Dimension of state vector and ensemble size
-integer  :: dim_ens
-integer  :: dim_state
-integer  :: dim_state_p
+! Dimension of state vector
 integer  :: noc
 integer  :: natm
 
 integer  :: total_steps
-real(wp) :: total_time, current_time(1)
+real(wp) :: current_time(1)
 integer :: nx, ny
 
 real(wp), parameter   :: pi =  3.14159265358979323846
@@ -48,13 +45,12 @@ real(wp), allocatable :: T_o(:, :)
 
 logical :: writeout
 logical :: ln_restart
-logical :: is_freerun
 integer :: restart_it
 integer :: tw
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it, is_freerun, tw
+namelist /model_nml/ nx, ny, ln_restart, restart_it, tw
 
 interface basis
    real(wp) function basis(M, H, P, x, y)
@@ -66,14 +62,17 @@ interface basis
 end interface basis
 
 contains
+   !> init model
    subroutine initialize_model()
-      integer :: ndim
+      integer  :: ndim
+      real(wp) :: total_time
       character(len=3)  :: task_id_str
 
       if (mype_world == 0) then
          print *, 'Model MAOOAM v1.4'
          print *, 'Loading information...'
       end if
+
       ! initialise model configurations 
       CALL maooam_model%init
       CALL integr%init(maooam_model)
@@ -81,22 +80,22 @@ contains
       natm = maooam_model%model_configuration%modes%natm
       noc = maooam_model%model_configuration%modes%noc
       ndim = maooam_model%model_configuration%modes%ndim
-      dim_state_p = nx*ny*4
 
+      ! initialise time information
       total_time = maooam_model%model_configuration%integration%t_run
-      dim_state = dim_state_p
-
+      total_steps = int(total_time/maooam_model%model_configuration%integration%dt)
       writeout = maooam_model%model_configuration%integration%writeout
-      ! tw = maooam_model%model_configuration%integration%tw
 
-      ! initialise the model writer
-      if (writeout) &
-         call init_model_writer(natm, noc, dim_ens)
-         
+      ! init fields in physical space
+      if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
+      if (.not. allocated(T_a)) allocate(T_a(nx, ny))
+      if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
+      if (.not. allocated(T_o)) allocate(T_o(nx, ny))
+
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
       field = maooam_model%load_IC()
-      
+
       if (ln_restart) then
          write(task_id_str, '(I3.3)') task_id
          call read_restart('restart/maooam_'//trim(task_id_str)//'.nc', natm, noc, field(1:), restart_it)
@@ -105,15 +104,14 @@ contains
          current_time(1) = 0
       endif
 
-      total_steps = int(total_time/maooam_model%model_configuration%integration%dt)
-
-      ! get atmospheric components
-      if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
-      if (.not. allocated(T_a)) allocate(T_a(nx, ny))
-      if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
-      if (.not. allocated(T_o)) allocate(T_o(nx, ny))
+      ! initialise the model writer
+      if (writeout) &
+         call init_model_writer(natm, noc, dim_ens)
+         ! write the initial condition
+         call write_model(current_time(1), 'f', field(1:), natm, noc)
    end subroutine initialize_model
 
+   !> initialise the model state from restart file
    subroutine read_restart(filename, natm, noc, fields, it)
       use netcdf
       use mod_nfcheck_pdaf, only: check
@@ -197,8 +195,7 @@ contains
       phi = 2*sin(0.5*H*x*n)*sin(P*y)
    end function phi
 
-   subroutine toPhysical()
-
+   subroutine toPhysical_A()
       integer :: H, M, P
       integer :: i, j, k
       real(wp) :: dx, dy, n
@@ -228,6 +225,7 @@ contains
             print *, "error in function type"
             stop
          end if
+
          do j = 1, ny
             do i = 1, nx
                psi_a(i, j) = psi_a(i, j) + field(k)*f(M, H, P, (i-1)*dx, (j-1)*dy)
@@ -235,6 +233,20 @@ contains
             enddo
          enddo
       end do
+   end subroutine toPhysical_A
+
+
+   subroutine toPhysical_O()
+      integer :: H, M, P
+      integer :: i, j, k
+      real(wp) :: dx, dy, n
+      CHARACTER :: typ=" "
+      procedure(basis), pointer :: f => null()
+
+      ! set up grid
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
 
       ! get ocean components
       psi_o = 0.
@@ -249,10 +261,10 @@ contains
             enddo
          enddo
       end do
-   end subroutine toPhysical
+   end subroutine toPhysical_O
 
 
-   subroutine toFourier(nx, ny)
+   subroutine toFourier_A(nx, ny)
       integer, intent(in) :: nx, ny
       integer :: H, M, P
       integer :: i, j, k
@@ -312,6 +324,31 @@ contains
          field(k+natm) = romb(nx, nk(1), integral, dx)
       end do
 
+      field(1:2*natm) =  field(1:2*natm)*n/2/pi/pi
+   end subroutine toFourier_A
+
+
+   subroutine toFourier_O(nx, ny)
+      integer, intent(in) :: nx, ny
+      integer :: H, M, P
+      integer :: i, j, k
+      integer :: nk(2)
+      CHARACTER :: typ=" "
+      real(wp) :: n
+      real(wp) :: dx, dy
+      real(wp) :: integrand(nx, ny)
+      real(wp) :: integral(nx)
+      procedure(basis), pointer :: f => null()
+
+      ! set up grid
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
+
+      ! set up numerical integration
+      nk(1) = int(log(real(nx, wp))/log(2.) + 1)
+      nk(2) = int(log(real(ny, wp))/log(2.) + 1)
+
       ! get ocean components
       do k = 1, noc
          H = maooam_model%inner_products%owavenum(k)%H
@@ -338,9 +375,8 @@ contains
          end do
          field(k + 2*natm + noc) = romb(nx, nk(1), integral, dx)
       end do
-
-      field(1:) =  field(1:)*n/2/pi/pi
-   end subroutine toFourier
+      field(2*natm+1:) =  field(2*natm+1:)*n/2/pi/pi
+   end subroutine toFourier_O
 
 
    subroutine finalize_model

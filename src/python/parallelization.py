@@ -187,7 +187,7 @@ class parallelization:
         self.filterpe = True if self.task_id == 1 else False
 
         my_color = self.task_id if self.filterpe \
-            else MPI.UNDEFINED
+            else 999
 
         self.COMM_filter = MPI.COMM_WORLD.Split(my_color,
                                                 self.mype_world)
@@ -274,7 +274,7 @@ class parallelization:
                 print(('!!! Resetting number of parallel'
                        'ensemble tasks to number of ensemble states!'))
 
-    def finalize_parallel(self):
+    def __del__(self):
         """Finalize MPI
         """
         MPI.COMM_WORLD.Barrier()

@@ -33,16 +33,35 @@ class StateVector:
         dimension of PE-local state vector
     """
 
-    def __init__(self, model, dim_ens):
+    def __init__(self, config, model, dim_ens, isStrong):
         """StateVector constructor
 
         Parameters
         ----------
+        config : `Config.PDAFConfig`
+            configuration object
         model : `Model.Model`
             model object
         dim_ens : int
             ensemble size
         """
-        self.dim_state_p = model.nx*model.ny*4
-        self.dim_state = model.nx*model.ny*4
+        self.component = config.get('component', 'ao')
+        if self.component == 'a':
+            self.varnames = ['psi_a', 'T_a']
+        elif self.component == 'o':
+            self.varnames = ['psi_o', 'T_o']
+        else:
+            self.varnames = ['psi_a', 'T_a', 'psi_o', 'T_o']
+        self.nVar = 4 if isStrong else 2
+        self.dim_state_p = model.nx*model.ny*self.nVar
+        self.dim_state = model.nx*model.ny*self.nVar
         self.dim_ens = dim_ens
+
+    def setFields(self, component):
+        if component == 'a':
+            self.varnames = ['psi_a', 'T_a']
+        elif component == 'o':
+            self.varnames = ['psi_o', 'T_o']
+        else:
+            self.varnames = ['psi_a', 'T_a', 'psi_o', 'T_o']
+

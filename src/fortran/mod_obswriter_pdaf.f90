@@ -1,7 +1,7 @@
 module mod_ObsWriter_pdaf
 use mod_kind_pdaf, only: wp
-use mod_model_pdaf, only: nx, ny, dim_ens
-use mod_observations_pdaf, only: n_obs, nxo, nyo
+use mod_model_pdaf, only: nx, ny
+use mod_observations_pdaf, only: n_obs, obs
 use netcdf
 use mod_nfcheck_pdaf, only: check
 implicit none
@@ -13,11 +13,10 @@ integer, allocatable :: varid_time(:)
 integer, allocatable :: varid(:, :)
 
 contains
-   subroutine init_obs_writer(filenames)
-      character(*), intent(in) :: filenames(:)
-
+   subroutine init_obs_writer()
       integer :: j
       integer :: i_obs
+      integer :: nxo, nyo
       integer :: dimids(4, 3)
 
       character(len=5)  :: varname(4)
@@ -30,10 +29,12 @@ contains
 
       time_count = 0
       do i_obs = 1, n_obs
-         call check( nf90_create(trim(filenames(i_obs)), nf90_netcdf4, ncid(i_obs)) )
+         call check( nf90_create(trim(obs(i_obs)%filename), nf90_netcdf4, ncid(i_obs)) )
          ! set global attributes
          call setAttrs(i_obs)
          ! initialise dimensions
+         nxo = nx/obs(i_obs)%obs_den + 1
+         nyo = ny/obs(i_obs)%obs_den + 1
          call check( nf90_def_dim( ncid(i_obs), 'time', nf90_unlimited, dimid(i_obs, 1) ) )
          call check( nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) ) )
          call check( nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' ) )
@@ -110,6 +111,7 @@ contains
       real(wp), intent(in) :: inputData(:)
 
       integer :: i
+      integer :: nxo, nyo
 
       time_count(i_obs) = time_count(i_obs) + 1
       call check( nf90_put_var(ncid(i_obs), varid_time(i_obs), &
@@ -117,6 +119,8 @@ contains
                           start=[time_count(i_obs)], count=[1]) )
 
       do i = 1, 4
+         nxo = nx/obs(i_obs)%obs_den + 1
+         nyo = ny/obs(i_obs)%obs_den + 1
          call check( nf90_put_var(ncid(i_obs), varid(i_obs, i), &
                              inputData((i-1)*nxo*nyo + 1: i*nxo*nyo), &
                              start=[1, 1, time_count(i_obs)], &

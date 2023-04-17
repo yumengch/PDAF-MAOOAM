@@ -42,6 +42,7 @@ class Localization:
         support range for 5th order polynomial
         or radius for 1/e for exponential weighting
     """
+    id_lstate_in_pstate = None
 
     def __init__(self, config):
         """class constructor
@@ -62,7 +63,8 @@ class Localization:
         # or radius for 1/e for exponential weighting 
         self.srange = config.getfloat('srange', 0)
 
-    def init_dim_l_pdaf(self, model, mype_filter, step, domain_p, dim_l):
+    @classmethod
+    def init_dim_l_pdaf(cls, model, sv, step, domain_p, dim_l):
         """initialise the local dimension of PDAF.
 
         The function set coordinates of local analysis domain
@@ -73,8 +75,8 @@ class Localization:
         ----------
         model : Model.Model
             model object
-        mype_filter : int
-            rank of the process in filter communicator
+        sv : StateVector.StateVector
+            state vector info
         step : int
             current time step
         domain_p : int
@@ -92,23 +94,24 @@ class Localization:
         # initialize coordinates of local domain
         # we use grid point indices as coordinates,
         #  but could e.g. use meters
-        self.coords_l = np.zeros(2)
+        coords_l = np.zeros(2)
 
-        self.coords_l[0] = np.tile(model.xc.ravel(), 4)[domain_p-1]
-        self.coords_l[1] = np.tile(model.yc.ravel(), 4)[domain_p-1]
+        coords_l[0] = np.tile(model.xc.ravel(), sv.nVar)[domain_p-1]
+        coords_l[1] = np.tile(model.yc.ravel(), sv.nVar)[domain_p-1]
         # initialize array of indices of the local state
         #  vector elements in the global state vector.
 
         # allocate array
-        self.id_lstate_in_pstate = np.zeros(dim_l, dtype=int)
+        cls.id_lstate_in_pstate = np.zeros(dim_l, dtype=int)
 
         # here the local domain is a single grid point
         # and variable given by domain_p
-        self.id_lstate_in_pstate[0] = domain_p - 1
+        cls.id_lstate_in_pstate[0] = domain_p - 1
 
         return dim_l
 
-    def init_n_domains_pdaf(self, sv, step, n_domains_p):
+    @classmethod
+    def init_n_domains_pdaf(cls, sv, step, n_domains_p):
         """get the number of analysis domains
 
         Parameters
@@ -127,7 +130,8 @@ class Localization:
         """
         return sv.dim_state_p
 
-    def g2l_state_pdaf(self, step, domain_p, dim_p, state_p, dim_l, state_l):
+    @classmethod
+    def g2l_state_pdaf(cls, step, domain_p, dim_p, state_p, dim_l, state_l):
         """convert PE-local global state vector to local state vector
 
         Parameters
@@ -147,10 +151,11 @@ class Localization:
         """
         # generic initialization
         # using id_lstate_in_pstate set in init_dim_l_pdaf
-        state_l = state_p[self.id_lstate_in_pstate]
+        state_l = state_p[cls.id_lstate_in_pstate]
         return state_l
 
-    def l2g_state_pdaf(self, step, domain_p, dim_l, state_l, dim_p, state_p):
+    @classmethod
+    def l2g_state_pdaf(cls, step, domain_p, dim_l, state_l, dim_p, state_p):
         """convert local state vector to PE-local global state vector
 
         Parameters
@@ -168,5 +173,5 @@ class Localization:
         state_p : ndarray
             PE-local global state vector
         """
-        state_p[self.id_lstate_in_pstate] = state_l
+        state_p[cls.id_lstate_in_pstate] = state_l
         return state_p

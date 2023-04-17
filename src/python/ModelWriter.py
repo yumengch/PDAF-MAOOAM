@@ -7,7 +7,7 @@ import netCDF4
 
 
 class ModelWriter:
-    def __init__(self, filename, dim_ens, model):
+    def __init__(self, filename, natm, noc):
         self.nc = netCDF4.Dataset(filename,'w')
 
         attrs = self.getFileAttrs()
@@ -15,11 +15,11 @@ class ModelWriter:
             setattr(self.nc, attr, value)
 
         self.nc.createDimension('time', None)
-        self.natm, self.noc = model.model_parameters.nmod
+        self.natm, self.noc = natm, noc
         time=self.nc.createVariable('time', np.dtype('float64').char, 'time')
         time.long_name = 'time'
         time.units = "days since 1900-1-1 0:0:0"
-        for dim, dimlen in zip(['ens', 'natm', 'noc'], [dim_ens, self.natm, self.noc]):
+        for dim, dimlen in zip(['natm', 'noc'], [self.natm, self.noc]):
             self.nc.createDimension(dim, dimlen)
 
         for vartype, typename in zip(['f', 'a'], ['forecast', 'analysis']):
@@ -29,16 +29,17 @@ class ModelWriter:
                 var.standard_name = standard_name + '_' + typename
                 var.long_name = typename + ' of ' + long_name
 
-        self.time_count = 0
+        self.time_count = -1
 
 
     def write(self, step, typename, inputData):
         data = self.distributeData(inputData)
+        if (typename == 'f'):
+            self.time_count += 1
         self.nc['time'][self.time_count] = step
         for i, varname in enumerate([f'psi_a_{typename}', f'T_a_{typename}', 
                                      f'psi_o_{typename}', f'T_o_{typename}']):
             self.nc[varname][self.time_count] = data[i]
-        self.time_count += 1
 
 
     def getVarAttrs(self):
@@ -53,7 +54,7 @@ class ModelWriter:
                            'coefficient of temperature in the ocean'
                           ]
 
-        dims = [('time', 'natm', 'ens'), ('time', 'natm', 'ens'), ('time', 'noc', 'ens'), ('time', 'noc', 'ens')]
+        dims = [('time', 'natm'), ('time', 'natm'), ('time', 'noc'), ('time', 'noc')]
         return fieldnames, field_standard_name, field_long_name, dims
 
 
@@ -87,3 +88,6 @@ class ModelWriter:
             da[varname] = xr.DataArray(data[i],
                                          dims=dim, name=varname, attrs=attrs)
         return da
+
+    def __del__(self):
+        self.nc.close()

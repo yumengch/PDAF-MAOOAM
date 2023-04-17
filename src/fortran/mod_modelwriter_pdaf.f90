@@ -128,7 +128,6 @@ contains
          tc = time_count(2)
       endif
 
-
       offsets = [0, natm, 2*natm, 2*natm + noc, 2*(natm + noc)]
       dims = [natm, natm, noc, noc]
 

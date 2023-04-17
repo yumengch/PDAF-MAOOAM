@@ -139,12 +139,11 @@ CONTAINS
    !! * 2004-11 - Lars Nerger - Initial code
    !! * Later revisions - see repository log
    !!
-   SUBROUTINE init_parallel_pdaf(dim_ens, screen)
+   SUBROUTINE init_parallel_pdaf(screen)
 
       IMPLICIT NONE
 
       ! *** Arguments ***
-      INTEGER, INTENT(inout) :: dim_ens !< Ensemble size or number of EOFs (only SEEK)
       !< Often dim_ens=0 when calling this routine, because the real ensemble size
       !< is initialized later in the program. For dim_ens=0 no consistency check
       !< for the ensemble size with the number of model tasks is performed.
@@ -157,9 +156,10 @@ CONTAINS
       INTEGER :: mype_couple, npes_couple ! Rank and size in COMM_couple
       INTEGER :: pe_index           ! Index of PE
       INTEGER :: my_color, color_couple ! Variables for communicator-splitting 
+      INTEGER :: dim_ens            !< Ensemble size or number of EOFs (only SEEK)
       LOGICAL :: iniflag            ! Flag whether MPI is initialized
 
-      namelist /ens_nml/ dim_ens, n_modeltasks
+      namelist /ens_nml/ dim_ens
 
       ! *** Initialize MPI if not yet initialized ***
       CALL MPI_Initialized(iniflag, MPIerr)

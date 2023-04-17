@@ -45,12 +45,13 @@ PDAF_OBJECTS = mod_kind_pdaf.o \
 		  mod_statewriter_pdaf.o \
 		  mod_modelwriter_pdaf.o \
 		  mod_model_pdaf.o \
+		  mod_statevector_pdaf.o \
 		  mod_localization_pdaf.o \
 		  mod_config_pdaf.o \
 		  mod_observations_pdaf.o \
 		  mod_obswriter_pdaf.o \
-                  mod_U_pdaf.o \
-                  mod_U_PDAFomi_pdaf.o \
+          mod_U_pdaf.o \
+          mod_U_PDAFomi_pdaf.o \
 		  mod_init_pdaf.o \
 		  mod_assimilate_pdaf.o \
 		  maooam.o

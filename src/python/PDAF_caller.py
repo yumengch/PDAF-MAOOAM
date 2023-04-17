@@ -20,8 +20,7 @@ import numpy as np
 import pyPDAF.PDAF as PDAF
 import pyPDAF.PDAF.PDAFomi as PDAFomi
 import functools
-import U_PDAF
-import U_PDAFomi
+from Localization import Localization
 
 
 class init_pdaf:
@@ -36,51 +35,35 @@ class init_pdaf:
         a list of float options for EnKF
     """
 
-    def __init__(self, sv, infl, options,
-                 local, model, pe, obs, writer, screen):
+    def __init__(self, das):
         """constructor
 
         Parameters
         ----------
-        sv : `StateVector.StateVector`
-            an object of StateVector
-        infl : `Inflation.Inflation`
-            inflation object
-        options : `FilterOptions.FilterOptions`
-            filtering options
-        local : `local.local`
-            local object
-        model : `Model.Model`
-            model object
-        pe : `parallelization.parallelization`
-            parallelization object
-        obs : `ObsFactory.ObsFactory`
-            ObsFactory object
+        das: `DAS.DAS`
+            object for the DA system
         screen : int
             verbosity of PDAF screen output
         """
-        if (options.filtertype == 2):
+        if (das.options.filtertype == 2):
             # EnKF with Monte Carlo init
             filter_param_i, filter_param_r = \
-                self.setEnKFOptions(6, 2, sv, infl, options)
+                self.setEnKFOptions(6, 2, das.sv, das.infl, das.options)
         else:
             # All other filters
             filter_param_i, filter_param_r = \
-                self.setETKFOptions(7, 2, sv, infl, options)
+                self.setETKFOptions(7, 2, das.sv, das.infl, das.options)
 
-        U_init_ens_pdaf = functools.partial(U_PDAF.init_ens_pdaf,
-                                            model)
-
-        _, _, status = PDAF.init(options.filtertype,
-                                 options.subtype,
+        _, _, status = PDAF.init(das.options.filtertype,
+                                 das.options.subtype,
                                  0,
                                  filter_param_i,
                                  filter_param_r,
-                                 pe.COMM_model.py2f(),
-                                 pe.COMM_filter.py2f(),
-                                 pe.COMM_couple.py2f(), pe.task_id,
-                                 pe.n_modeltasks, pe.filterpe,
-                                 U_init_ens_pdaf, screen)
+                                 das.pe.COMM_model.py2f(),
+                                 das.pe.COMM_filter.py2f(),
+                                 das.pe.COMM_couple.py2f(), das.pe.task_id,
+                                 das.pe.n_modeltasks, das.pe.filterpe,
+                                 das.UserFuncs.init_ens_pdaf, das.screen)
         try:
             assert status == 0, \
                 f'ERROR {status} \
@@ -89,21 +72,12 @@ class init_pdaf:
         except AssertionError:
             pe.abort_parallel()
 
-        U_next_observation_pdaf = \
-            functools.partial(U_PDAF.next_observation_pdaf,
-                              model, pe, obs.delt_obs)
-        U_distribute_state_pdaf = \
-            functools.partial(U_PDAF.distribute_state_pdaf,
-                              model)
-        U_prepoststep_ens_pdaf = \
-            functools.partial(U_PDAF.prepoststep_ens_pdaf,
-                              sv, model, pe, obs, writer)
-
         steps, time, doexit, status = PDAF.get_state(10, 10,
-                                         U_next_observation_pdaf,
-                                         U_distribute_state_pdaf,
-                                         U_prepoststep_ens_pdaf,
+                                         das.UserFuncs.next_observation_pdaf,
+                                         das.UserFuncs.distribute_state_pdaf,
+                                         das.UserFuncs.prepoststep_ens_pdaf,
                                          status)
+
 
     def setEnKFOptions(self, dim_pint, dim_preal,
                        sv, infl, options):
@@ -173,7 +147,7 @@ class assimilate_pdaf:
     """assimilation calls
     """
 
-    def __init__(self, model, obs, pe, sv, local, writer, filtertype):
+    def __init__(self, das):
         """constructor
 
         Parameters
@@ -186,101 +160,60 @@ class assimilate_pdaf:
             parallelization object
         sv : `StateVector.StateVector`
             an object of StateVector
-        local : `Localization.Localization`
-            a localization object
         filtertype : int
             type of filter
         """
         localfilter = PDAF.get_localfilter()
 
-        U_collect_state_pdaf = \
-            functools.partial(U_PDAF.collect_state_pdaf,
-                              model)
-        U_next_observation_pdaf = \
-            functools.partial(U_PDAF.next_observation_pdaf,
-                              model, pe, obs.delt_obs)
-        U_distribute_state_pdaf = \
-            functools.partial(U_PDAF.distribute_state_pdaf,
-                              model)
-        U_prepoststep_ens_pdaf = \
-            functools.partial(U_PDAF.prepoststep_ens_pdaf,
-                              sv, model, pe, obs, writer)
-        U_init_dim_obs_PDAFomi = \
-            functools.partial(U_PDAFomi.init_dim_obs_pdafomi,
-                              obs,
-                              local.local_range,
-                              model,
-                              pe.mype_filter,
-                              sv.dim_state,
-                              sv.dim_state_p)
-
-        U_obs_op_PDAFomi = \
-            functools.partial(U_PDAFomi.obs_op_pdafomi,
-                              obs)
-
         if (localfilter == 1):
             U_init_n_domains_pdaf = \
-                functools.partial(local.init_n_domains_pdaf,
-                                  sv)
+                functools.partial(Localization.init_n_domains_pdaf,
+                                  das.sv)
+            
             U_init_dim_l_pdaf = \
-                functools.partial(local.init_dim_l_pdaf,
-                                  model, pe.mype_filter)
-            U_init_dim_obs_l_pdafomi = \
-                functools.partial(U_PDAFomi.init_dim_obs_l_pdafomi,
-                                  obs, local)
+                functools.partial(Localization.init_dim_l_pdaf,
+                                  das.model, das.sv)
             status = \
-                PDAFomi.assimilate_local(U_collect_state_pdaf,
-                                         U_distribute_state_pdaf,
-                                         U_init_dim_obs_PDAFomi,
-                                         U_obs_op_PDAFomi,
-                                         U_prepoststep_ens_pdaf,
+                PDAFomi.assimilate_local(das.UserFuncs.collect_state_pdaf,
+                                         das.UserFuncs.distribute_state_pdaf,
+                                         das.UserFuncsO.init_dim_obs_pdafomi,
+                                         das.UserFuncsO.obs_op_pdafomi,
+                                         das.UserFuncs.prepoststep_ens_pdaf,
                                          U_init_n_domains_pdaf,
                                          U_init_dim_l_pdaf,
-                                         U_init_dim_obs_l_pdafomi,
-                                         local.g2l_state_pdaf,
-                                         local.l2g_state_pdaf,
-                                         U_next_observation_pdaf)
+                                         das.UserFuncsO.init_dim_obs_l_pdafomi,
+                                         Localization.g2l_state_pdaf,
+                                         Localization.l2g_state_pdaf,
+                                         das.UserFuncs.next_observation_pdaf)
+
         else:
-            if filtertype == 8:
-                U_localize_covar_pdafomi = \
-                    functools.partial(U_PDAFomi.localize_covar_pdafomi,
-                                      obs, local, model,
-                                      pe.mype_filter)
+            if das.options.filtertype == 8:
                 status = \
-                    PDAFomi.assimilate_lenkf(U_collect_state_pdaf,
-                                             U_distribute_state_pdaf,
-                                             U_init_dim_obs_PDAFomi,
-                                             U_obs_op_PDAFomi,
-                                             U_prepoststep_ens_pdaf,
-                                             U_localize_covar_pdafomi,
-                                             U_next_observation_pdaf)
-            elif filtertype == 100: 
-                U_get_obs_f = functools.partial(U_PDAFomi.get_obs_f, obs)
-                U_init_dim_obs_gen_PDAFomi = \
-                    functools.partial(U_PDAFomi.init_dim_obs_gen_pdafomi,
-                                      obs,
-                                      local.local_range,
-                                      model,
-                                      pe.mype_filter,
-                                      sv.dim_state,
-                                      sv.dim_state_p)
+                    PDAFomi.assimilate_lenkf(das.UserFuncs.collect_state_pdaf,
+                                             das.UserFuncs.distribute_state_pdaf,
+                                             das.UserFuncsO.init_dim_obs_pdafomi,
+                                             das.UserFuncsO.obs_op_pdafomi,
+                                             das.UserFuncs.prepoststep_ens_pdaf,
+                                             das.UserFuncsO.localize_covar_pdafomi,
+                                             das.UserFuncs.next_observation_pdaf)
+
+            elif das.options.filtertype == 100:
                 status = \
-                    PDAFomi.generate_obs(U_collect_state_pdaf,
-                                         U_distribute_state_pdaf,
-                                         U_init_dim_obs_gen_PDAFomi,
-                                         U_obs_op_PDAFomi,
-                                         U_get_obs_f,
-                                         U_prepoststep_ens_pdaf,
-                                         U_next_observation_pdaf)
+                    PDAFomi.generate_obs(das.UserFuncs.collect_state_pdaf,
+                                         das.UserFuncs.distribute_state_pdaf,
+                                         das.UserFuncsO.init_dim_obs_gen_pdafomi,
+                                         das.UserFuncsO.obs_op_pdafomi,
+                                         das.UserFuncsO.get_obs_f,
+                                         das.UserFuncs.prepoststep_ens_pdaf,
+                                         das.UserFuncs.next_observation_pdaf)
             else:
                 status = \
-                    PDAFomi.assimilate_global(U_collect_state_pdaf,
-                                              U_distribute_state_pdaf,
-                                              U_init_dim_obs_PDAFomi,
-                                              U_obs_op_PDAFomi,
-                                              U_prepoststep_ens_pdaf,
-                                              U_next_observation_pdaf)
-
+                    PDAFomi.assimilate_global(das.UserFuncs.collect_state_pdaf,
+                                              das.UserFuncs.distribute_state_pdaf,
+                                              das.UserFuncsO.init_dim_obs_pdafomi,
+                                              das.UserFuncsO.obs_op_pdafomi,
+                                              das.UserFuncs.prepoststep_ens_pdaf,
+                                              das.UserFuncs.next_observation_pdaf)
 
         if status != 0:
             print(('ERROR ', status,

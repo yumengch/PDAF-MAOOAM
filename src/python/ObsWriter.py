@@ -7,7 +7,7 @@ import netCDF4
 
 
 class ObsWriter:
-    def __init__(self, filename, model):
+    def __init__(self, filename, model, obs_den):
         self.nc = netCDF4.Dataset(filename,'w')
 
         attrs = self.getFileAttrs()
@@ -19,7 +19,7 @@ class ObsWriter:
         time.long_name = 'time'
         time.units = "days since 1900-1-1 0:0:0"
 
-        self.nx, self.ny = model.nx, model.ny
+        self.nx, self.ny = model.nx//obs_den + 1, model.ny//obs_den + 1
         for dim, dimlen in zip(['nx', 'ny'], [self.nx, self.ny]):
             self.nc.createDimension(dim, dimlen)
 

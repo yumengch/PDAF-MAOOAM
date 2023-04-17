@@ -17,48 +17,19 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-from parallelization import parallelization
-from ObsFactory import ObsFactory
-from StateVector import StateVector
-from FilterOptions import FilterOptions
-from Inflation import Inflation
-from Localization import Localization
+
 from DAS import DAS
 import Config
-import Model
 
 import sys
 import time
 import mpi4py.MPI
+from ModelWriter import ModelWriter
 
 def main():
     config = Config.PDAFConfig()
-    usePDAF = config['Global'].getboolean('usePDAF', True)
-    screen = config['Global'].getint('screen', 3)
-
-    pe = parallelization(config['Ensemble'], screen=screen)
-
-    # Initial Screen output
-    if (pe.mype_world == 0):
-        print('+++++ PDAF online mode +++++')
-        print('+++++ MAOOAM +++++')
-
-    # Initialize model
-    model = Model.Model(config['Model'], pe=pe)
-
-    obs = ObsFactory(config['Obs'], pe.mype_filter, model)
-
-    das = DAS(pe, model, obs, screen=screen)
-    sv = StateVector(das.model, dim_ens=das.pe.n_modeltasks)
-    options = FilterOptions(config['FilterOptions'])
-    infl = Inflation(config['Inflation'])
-    local = Localization(config['Localization'])
-    das.init(sv, options, infl, local)
-
-    for it in range(model.total_steps):
-        das.forward(it, usePDAF)
-
-    pe.finalize_parallel()
-
+    das = DAS()
+    das.init(config)
+    das.forward()
 if __name__ == '__main__':
     main()

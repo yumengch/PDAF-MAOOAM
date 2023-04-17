@@ -1,15 +1,19 @@
 PROGRAM maooam_pdaf
    use mod_kind_pdaf, only: wp
-   use mod_model_pdaf, &
-              only: dim_ens, natm, noc, &
-                    initialize_model, &
-                    finalize_model, total_steps, &
-                    writeout, tw, restart_it,&
-                    integr, field, field_new, &
-                    current_time, is_freerun
-   use mod_config_pdaf, only: verbose, read_namelist
+   use mod_config_pdaf, only: screen, is_freerun, is_strong, read_namelist
    use mod_parallel_pdaf, only: initialize_parallel_pdaf, mype_world, &
                                 init_parallel_pdaf, finalize_parallel_pdaf
+   use mod_statevector_pdaf, only: component, setField
+   use mod_model_pdaf, only: initialize_model, &
+                             natm, noc, &
+                             finalize_model, total_steps, &
+                             writeout, tw, restart_it,&
+                             integr, field, field_new, &
+                             current_time
+   use mod_observations_pdaf, only: initObs => init, obs
+   use mod_FilterOptions_pdaf, only: filtertype
+   use mod_statevector_pdaf, only: initSV
+   use mod_obswriter_pdaf, only: init_obs_writer
    use mod_init_pdaf, only: init_pdaf, finalize_pdaf
    use mod_ModelWriter_pdaf, only: write_model
    use mod_assimilate_pdaf, only: assimilate_pdaf
@@ -28,15 +32,16 @@ PROGRAM maooam_pdaf
    ! Initialise parallization
    call initialize_parallel_pdaf()
    call read_namelist()
-   call init_parallel_pdaf(dim_ens, verbose)
+   call init_parallel_pdaf(screen)
    ! initialise model
    call initialize_model()
+   ! initialise state vector
+   call initSV(is_strong)
+   ! initialise observations
+   call initObs()
+   if (filtertype == 100) call init_obs_writer()
    ! initialise PDAF
-   call init_pdaf(verbose)
-
-   t= current_time(1) 
-   if (writeout) &
-      call write_model(t, 'f', field(1:), natm, noc)
+   call init_pdaf(screen)
 
    if (mype_world == 0) print *, 'Starting the time evolution...'
    timer_model_dur = 0.
@@ -49,8 +54,9 @@ PROGRAM maooam_pdaf
    dimomi_dur = 0._wp
    op_dur = 0._wp
 
+   t= current_time(1)
    DO it = 1, total_steps
-      IF ((writeout .AND. mod(it-1, tw) < integr%dt) .or. (it == 1)) THEN
+      IF ((writeout) .AND. (mod(it-1, tw) < integr%dt)) THEN
          if (mype_world == 0 ) print *, 'a', it
          call write_model(t, 'a', field(1:), natm, noc)
       endif
@@ -62,29 +68,46 @@ PROGRAM maooam_pdaf
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
 
-      IF (writeout .AND. mod(it, tw) < integr%dt) THEN
+      IF ((writeout) .AND. (mod(it, tw) < integr%dt)) THEN
          if (mype_world == 0) print *, 'f', it
          call write_model(t, 'f', field(1:), natm, noc)
       end if
 
       call SYSTEM_CLOCK(timer_PDAF_start)
+      if ((.not. is_Strong) .and. (component == 'b')) then
+          call setField('a')
+          obs(1)%doassim = 1
+          obs(2)%doassim = 0
+      end if
       if (.not. is_freerun) call assimilate_pdaf()
+
+      if ((.not. is_strong) .and. (component == 'b')) then
+          call setField('o')
+          obs(1)%doassim = 0
+          obs(2)%doassim = 1
+          call assimilate_pdaf()
+      end if
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)
 
-   END DO
-   if (mype_world == 0)  print *, 'Evolution finished.'
 
-   print *, 'model evolution:', timer_model_dur
-   print *, 'total assimilation time', timer_pdaf_dur
-   print *, 'user-defined state collection:'       , collect_dur
-   print *, 'user-defined state distribution:'     , distr_dur
-   print *, 'user-defined next observation:'       , next_dur
-   print *, 'user-defined prepost processing:'     , prepost_dur
-   print *, 'user-defined observation output:'     , getobs_dur
-   print *, 'user-defined initialise observation:' , dimomi_dur
-   print *, 'user-defined observation operator:'   , op_dur
+
+   END DO
+
+   if (mype_world == 0)  then
+      print *, 'Evolution finished.'
+
+      print *, 'model evolution:', timer_model_dur
+      print *, 'total assimilation time', timer_pdaf_dur
+      print *, 'user-defined state collection:'       , collect_dur
+      print *, 'user-defined state distribution:'     , distr_dur
+      print *, 'user-defined next observation:'       , next_dur
+      print *, 'user-defined prepost processing:'     , prepost_dur
+      print *, 'user-defined observation output:'     , getobs_dur
+      print *, 'user-defined initialise observation:' , dimomi_dur
+      print *, 'user-defined observation operator:'   , op_dur
+   end if
 
    call finalize_model()
    CALL finalize_pdaf()

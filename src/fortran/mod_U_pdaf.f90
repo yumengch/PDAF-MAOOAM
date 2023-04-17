@@ -24,19 +24,22 @@
 !!
 module mod_U_pdaf
 use mod_kind_pdaf, only: wp
+use mod_config_pdaf, only: is_freerun, is_strong
+USE mod_parallel_pdaf, ONLY: mype_world
 implicit none
 
 logical :: firsttime = .true.
+logical :: firsttime_distribute = .true.
 integer :: timer_collect_start, timer_collect_end, t_rate
 integer :: timer_distr_start, timer_distr_end
 integer :: timer_next_start, timer_next_end
 integer :: timer_prepost_start, timer_prepost_end
 real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
 contains
-   subroutine init_ens_pdaf_freerun(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
+   subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       use netcdf
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical
+         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical_A, toPhysical_O
       use mod_nfcheck_pdaf, only: check
       use pdaf_interfaces_module, only: PDAF_sampleens
       implicit none
@@ -62,6 +65,11 @@ contains
       real(wp), allocatable :: eofV(:, :)
       real(wp), allocatable :: svals(:)
       character(len=5) :: varname(4)
+      ! convert to physical space
+      if (.not. is_freerun) then
+         ens_p = 0.
+         return
+      end if
 
       varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
       call check( nf90_open('covariance.nc', nf90_nowrite, ncid) )
@@ -75,7 +83,8 @@ contains
 
       allocate(eofV(dim_ens - 1, dim_p))
 
-      call toPhysical()
+      call toPhysical_A()
+      call toPhysical_O()
       state_p(:nx*ny) = reshape(psi_a, [nx*ny])
       state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
       state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
@@ -95,35 +104,13 @@ contains
       end if
       call check( nf90_close(ncid) )
       deallocate(eofV, svals)
-   end subroutine init_ens_pdaf_freerun
-
-   subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
-      implicit none
-      ! type of filter to initialize
-      integer, intent(in) :: filtertype
-      ! pe-local state dimension
-      integer, intent(in) :: dim_p
-      ! size of ensemble
-      integer, intent(in) :: dim_ens
-      ! pe-local model state
-      real(wp), intent(inout) :: state_p(dim_p)
-      ! array not referenced for ensemble filters
-      real(wp), intent(inout) :: uinv(dim_ens - 1,dim_ens - 1)
-      ! pe-local state ensemble
-      real(wp), intent(inout) :: ens_p(dim_p, dim_ens)
-      ! pdaf status flag
-      integer, intent(inout) :: status_pdaf
-
-      ens_p = 0.
    end subroutine init_ens_pdaf
 
    SUBROUTINE next_observation_pdaf(stepnow, nsteps, doexit, time)
-      USE mod_parallel_pdaf, &    ! Parallelization variables
-         ONLY: mype_world
-      USE mod_model_pdaf, &            ! Model variables
-         ONLY: total_steps, is_freerun
-      USE mod_observations_pdaf, &
-         ONLY: delt_obs_all
+
+      USE mod_model_pdaf, ONLY: total_steps
+      USE mod_observations_pdaf, ONLY: obs
+      use mod_statevector_pdaf, only: component
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -133,17 +120,41 @@ contains
       REAL(wp), INTENT(out)    :: time     !< Current model (physical) time
 
       integer :: delt_obs
+      integer :: factor, shift
+      integer :: true_step
+      logical :: condition
 
       call SYSTEM_CLOCK(timer_next_start)      
       ! *******************************************************
       ! *** Set number of time steps until next observation ***
       ! *******************************************************
-      time = 0.0          ! Not used in this implementation
-      delt_obs = 90
-      if (.not. is_freerun) delt_obs = minval(delt_obs_all)
-      IF (stepnow + delt_obs <= total_steps) THEN
+      condition = (.not. is_strong) .and. (component == 'b')
+      factor = 1
+      shift = 0
+      if (condition) then
+         factor = 2
+         shift = -1
+      end if
+
+      true_step = (stepnow - shift)/factor
+      delt_obs = minval(obs(:)%delt_obs)
+      if (condition) then
+         if (mod(true_step + delt_obs, obs(1)%delt_obs) /= 0) &
+             shift = 0
+      end if
+
+      if (factor*true_step - stepnow == 1) then
+         ! weak coupling and assimilated atmosphere
+         nsteps = 1
+         if (mod(true_step, obs(2)%delt_obs) /= 0) &
+                nsteps = nsteps + delt_obs*factor + shift
+      else
+         ! strong coupling or weak coupling assimilated ocean
+         nsteps = delt_obs*factor + shift
+      end if
+
+      IF (true_step + nsteps <= total_steps*factor) THEN
          ! *** During the assimilation process ***
-         nsteps = delt_obs   ! This assumes a constant time step interval
          doexit = 0          ! Not used in this impl
 
          IF (mype_world == 0) WRITE (*, '(i7, 3x, a, i7)') &
@@ -160,16 +171,20 @@ contains
     next_dur = next_dur + &
         (real(timer_next_end, wp) - real(timer_next_start, wp))/real(t_rate, wp)      
    END SUBROUTINE next_observation_pdaf
+
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier, toPhysical
-
+         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
+
+      ! local variable
+      integer :: offset
 
       call SYSTEM_CLOCK(timer_distr_start)
 
@@ -177,58 +192,76 @@ contains
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
       !**************************************************
-      psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
-      T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
-      psi_o = reshape(state_p(2*nx*ny+1:3*nx*ny), [nx, ny])
-      T_o   = reshape(state_p(3*nx*ny+1:4*nx*ny), [nx, ny])
-      call toFourier(nx, ny)
+      if ((firsttime_distribute) .and. (.not. is_freerun)) then
+         if (mype_world == 0) &
+             print *, 'distribute_state_pdaf: starting from restart files'
+         firsttime_distribute = .false.
+         return
+      end if
 
+      if (sv_atm) then
+         psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
+         T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
+         call toFourier_A(nx, ny)
+      end if
+
+      offset = 0
+      if (sv_atm) offset = 2*nx*ny
+      if (sv_ocean) then
+         psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
+         T_o   = reshape(state_p(offset+nx*ny+1:offset+2*nx*ny), [nx, ny])
+         call toFourier_O(nx, ny)
+      end if
       call SYSTEM_CLOCK(timer_distr_end, t_rate)
       distr_dur = distr_dur + &
         (real(timer_distr_end, wp) - real(timer_distr_start, wp))/real(t_rate, wp)
    END SUBROUTINE distribute_state_pdaf
 
-   SUBROUTINE distribute_state_pdaf_init(dim_p, state_p)
-      IMPLICIT NONE
-
-      ! *** Arguments ***
-      INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
-      REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
-
-   END SUBROUTINE distribute_state_pdaf_init
 
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
 
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: psi_a, T_a, psi_o, T_o, toPhysical, nx, ny
-
+         ONLY: psi_a, T_a, psi_o, T_o, toPhysical_A, toPhysical_O, nx, ny
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
 
+      ! local variable
+      integer :: offset
+
       call SYSTEM_CLOCK(timer_collect_start)
       ! *************************************************
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
       ! *************************************************
-      call toPhysical()
-      state_p(:nx*ny) = reshape(psi_a, [nx*ny])
-      state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
-      state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
-      state_p(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
+      if (sv_atm) then
+         call toPhysical_A()
+         state_p(:nx*ny) = reshape(psi_a, [nx*ny])
+         state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
+      endif
+      if (sv_ocean) then
+         call toPhysical_O()
+         offset = 0
+         if (sv_atm) offset = 2*nx*ny
+         state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
+         state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
+      endif
 
       call SYSTEM_CLOCK(timer_collect_end, t_rate)
       collect_dur = collect_dur + &
         (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
    END SUBROUTINE collect_state_pdaf
 
+
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
                                    dim_obs_p, state_p, uinv, ens_p, flag)
       use mod_parallel_pdaf, only: mype_filter, comm_filter, &
                                    npes_filter, MPIerr, MPIstatus
-      use mod_model_pdaf, only: nx, ny, dim_state_p, integr
+      use mod_model_pdaf, only: nx, ny, integr
+      use mod_statevector_pdaf, only: dim_state_p
       use mod_StateWriter_pdaf, only: write_state
 
       include 'mpif.h'
@@ -257,9 +290,9 @@ contains
          print *, 'Analyze initial state ensemble'
       else
          if (step < 0) then
-            print *, 'Analyze and write forecasted state ensemble'
+            print *, 'Analyze forecasted state ensemble'
          else
-            print *, 'Analyze and write assimilated state ensemble'
+            print *, 'Analyze assimilated state ensemble'
          endif
       endif
 

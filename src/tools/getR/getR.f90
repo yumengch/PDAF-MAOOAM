@@ -80,7 +80,7 @@ T_o_mean = 0._wp
 print *, 1._wp/nt
 ! nt = 100
 dt = 1._wp/nt
-do it = 1, nt 
+do it = 1, nt
    do i = 1, 4
       ierr = nf90_inq_varid(ncid, trim(varnames(i)), varid)
       ierr = nf90_get_var(ncid, varid, coeffs(offset(i)+1:offset(i+1)),&
@@ -141,19 +141,16 @@ deallocate(coeffs)
 deallocate(psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
 deallocate(psi_a_var, T_a_var, psi_o_var, T_o_var)
 contains
-   real(wp) function Fa(M, H, P, n, nx, ny, x, y)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: n
+   real(wp) function Fa(P, x, y)
+      integer,  intent(in) :: P
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
 
       Fa = sqrt(2.)*cos(P*y)
    end function Fa
 
-   real(wp) function Fk(M, H, P, n, nx, ny, x, y)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
+   real(wp) function Fk(M, P, n, x, y)
+      integer,  intent(in) :: M, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
@@ -161,9 +158,8 @@ contains
       Fk = 2*cos(M*x*n)*sin(P*y)
    end function Fk
 
-   real(wp) function Fl(M, H, P, n, nx, ny, x, y)
-      integer,  intent(in) :: nx, ny
-      integer,  intent(in) :: M, H, P
+   real(wp) function Fl(H, P, n, x, y)
+      integer,  intent(in) :: H, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
@@ -171,8 +167,7 @@ contains
       Fl = 2*sin(H*x*n)*sin(P*y)
    end function Fl
 
-   real(wp) function phi(H, P, n, nx, ny, x, y)
-      integer,  intent(in) :: nx, ny
+   real(wp) function phi(H, P, n, x, y)
       integer,  intent(in) :: H, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
@@ -197,20 +192,6 @@ contains
       real(wp)  :: dx, dy
       CHARACTER :: typ=" "
 
-      interface basis
-         function basis(M, H, P, n, nx, ny, x, y) result(res)
-            import :: wp
-            integer,  intent(in) :: nx, ny
-            integer,  intent(in) :: M, H, P
-            real(wp), intent(in) :: n
-            real(wp), intent(in) :: x
-            real(wp), intent(in) :: y
-
-            real(wp) :: res
-         end function basis
-      end interface basis
-      procedure(basis), pointer :: f => null()
-
       ! set up grid
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)
@@ -219,27 +200,36 @@ contains
       ! get atmospheric components
       psi_a = 0.
       T_a = 0.
+
       do k = 1, natm
          H = maooam_model%inner_products%awavenum(k)%H
          M = maooam_model%inner_products%awavenum(k)%M
          P = maooam_model%inner_products%awavenum(k)%P
          typ = maooam_model%inner_products%awavenum(k)%typ
+
          if (typ == "A") then
-            f => Fa
-         else if (typ == "K") then
-            f => Fk
-         else if (typ == "L") then
-            f => Fl
-         else
-            print *, "error in function type"
-            stop
-         end if
-         do j = 1, ny
-            do i = 1, nx
-               psi_a(i, j) = psi_a(i, j) + coeffs(k)*f(M, H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-               T_a(i, j) = T_a(i, j) + coeffs(k + natm)*f(M, H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fa(P, (i-1)*dx, (j-1)*dy)
+                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fa(P, (i-1)*dx, (j-1)*dy)
+               enddo
             enddo
-         enddo
+         else if (typ == "K") then
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
+                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
+         else if (typ == "L") then
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
+                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
+         end if
+
       end do
 
       ! get ocean components
@@ -250,123 +240,12 @@ contains
          P = maooam_model%inner_products%owavenum(k)%P
          do j = 1, ny
             do i = 1, nx
-               psi_o(i, j) = psi_o(i, j) + coeffs(k + 2*natm)*phi(H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-               T_o(i, j) = T_o(i, j) + coeffs(k + 2*natm + noc)*phi(H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
+               psi_o(i, j) = psi_o(i, j) + coeffs(k + 2*natm)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
+               T_o(i, j) = T_o(i, j) + coeffs(k + 2*natm + noc)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
             enddo
          enddo
       end do
    end subroutine toPhysical
-
-   subroutine toFourier(maooam_model, nx, ny, coeffs, psi_a, T_a, psi_o, T_o)
-      type(model), intent(in)    :: maooam_model
-      integer,     intent(in)    :: nx, ny
-      real(wp),    intent(inout) :: coeffs(:)
-      real(wp),    intent(in)    :: psi_a(:, :)
-      real(wp),    intent(in)    :: T_a(:, :)
-      real(wp),    intent(in)    :: psi_o(:, :)
-      real(wp),    intent(in)    :: T_o(:, :)
-
-      real(wp), parameter :: pi = dacos(-1.D0)
-      integer :: H, M, P
-      integer :: i, j, k
-      integer :: nk(2)
-      CHARACTER :: typ=" "
-      real(wp) :: n
-      real(wp) :: dx, dy
-      real(wp) :: integrand(nx, ny)
-      real(wp) :: integral(nx)
-      interface basis
-         function basis(M, H, P, n, nx, ny, x, y) result(res)
-            import :: wp
-            integer,  intent(in) :: nx, ny
-            integer,  intent(in) :: M, H, P
-            real(wp), intent(in) :: n
-            real(wp), intent(in) :: x
-            real(wp), intent(in) :: y
-
-            real(wp) :: res
-         end function basis
-      end interface basis
-
-      procedure(basis), pointer :: f => null()
-
-      ! set up grid
-      n = maooam_model%model_configuration%physics%n
-      dx = 2*pi/n/(nx - 1)
-      dy = pi/(ny - 1)
-
-      ! set up numerical integration
-      nk(1) = int(log(real(nx, wp))/log(2.) + 1)
-      nk(2) = int(log(real(ny, wp))/log(2.) + 1)
-
-      ! get atmospheric components
-      do k = 1, natm
-         H = maooam_model%inner_products%awavenum(k)%H
-         M = maooam_model%inner_products%awavenum(k)%M
-         P = maooam_model%inner_products%awavenum(k)%P
-         typ = maooam_model%inner_products%awavenum(k)%typ
-         if (typ == "A") then
-            f => Fa
-         else if (typ == "K") then
-            f => Fk
-         else if (typ == "L") then
-            f => Fl
-         else
-            print *, "error in function type"
-            stop
-         end if
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = psi_a(i, j)*f(M, H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
-         
-         do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
-         end do
-         coeffs(k) = romb(nx, nk(1), integral, dx)
-
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = T_a(i, j)*f(M, H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
-
-         do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
-         end do
-         coeffs(k+natm) = romb(nx, nk(1), integral, dx)
-      end do
-
-      ! get ocean components
-      do k = 1, noc
-         H = maooam_model%inner_products%owavenum(k)%H
-         P = maooam_model%inner_products%owavenum(k)%P
-
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = psi_o(i, j)*phi(H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
-         do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
-         end do
-         coeffs(k + 2*natm) = romb(nx, nk(1), integral, dx)
-
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = T_o(i, j)*phi(H, P, n, nx, ny, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
-
-         do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
-         end do
-         coeffs(k + 2*natm + noc) = romb(nx, nk(1), integral, dx)
-      end do
-
-      coeffs(1:) =  coeffs(1:)*n/2/pi/pi
-   end subroutine toFourier
 
    function iso8601() result(datetime)
       !! Returns current date and time in ISO 8601 format.

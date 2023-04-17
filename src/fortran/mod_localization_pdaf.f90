@@ -27,9 +27,10 @@ real(wp) :: coords_l(2)
 contains
    SUBROUTINE init_dim_l_pdaf(step, domain_p, dim_l)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: dim_state_p, nx, ny, pi, maooam_model
+         ONLY: nx, ny, pi, maooam_model
       USE mod_parallel_pdaf, &     ! assimilation parallelization variables
          ONLY: mype_filter
+      use mod_statevector_pdaf, only: dim_state_p
 
       IMPLICIT NONE
 
@@ -80,7 +81,7 @@ contains
    END SUBROUTINE init_dim_l_pdaf
 
    SUBROUTINE init_n_domains_pdaf(step, n_domains_p)
-      USE mod_model_pdaf, &      ! Assimilation variables
+      USE mod_statevector_pdaf, &      ! Assimilation variables
          ONLY: dim_state_p
 
       IMPLICIT NONE
