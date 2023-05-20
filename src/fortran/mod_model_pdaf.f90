@@ -52,15 +52,6 @@ type(RK4Integrator) :: integr
 
 namelist /model_nml/ nx, ny, ln_restart, restart_it, tw
 
-interface basis
-   real(wp) function basis(M, H, P, x, y)
-      import :: wp
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x
-      real(wp), intent(in) :: y
-   end function basis
-end interface basis
-
 contains
    !> init model
    subroutine initialize_model()
@@ -73,7 +64,7 @@ contains
          print *, 'Loading information...'
       end if
 
-      ! initialise model configurations 
+      ! initialise model configurations
       CALL maooam_model%init
       CALL integr%init(maooam_model)
 
@@ -129,7 +120,7 @@ contains
       integer          :: offset(5)
       character(len=7) :: varnames(4)
 
-      varnames = [character(len=7) :: 'psi_a_f', 'T_a_f', 'psi_o_f', 'T_o_f']
+      varnames = [character(len=7) :: 'psi_a_a', 'T_a_a', 'psi_o_a', 'T_o_a']
       dim = [natm, natm, noc, noc]
       offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
 
@@ -154,16 +145,15 @@ contains
       call check( nf90_close(ncid) )
    end subroutine read_restart
 
-   real(wp) function Fa(M, H, P, x, y)
-      integer,  intent(in) :: M, H, P
-      real(wp), intent(in) :: x
+   real(wp) function Fa(P, y)
+      integer,  intent(in) :: P
       real(wp), intent(in) :: y
 
       Fa = sqrt(2.)*cos(P*y)
    end function Fa
 
-   real(wp) function Fk(M, H, P, x, y)
-      integer,  intent(in) :: M, H, P
+   real(wp) function Fk(M, P, x, y)
+      integer,  intent(in) :: M, P
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
 
@@ -173,8 +163,8 @@ contains
       Fk = 2*cos(M*x*n)*sin(P*y)
    end function Fk
 
-   real(wp) function Fl(M, H, P, x, y)
-      integer,  intent(in) :: M, H, P
+   real(wp) function Fl(H, P, x, y)
+      integer,  intent(in) :: H, P
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
 
@@ -200,7 +190,6 @@ contains
       integer :: i, j, k
       real(wp) :: dx, dy, n
       CHARACTER :: typ=" "
-      procedure(basis), pointer :: f => null()
 
       ! set up grid
       n = maooam_model%model_configuration%physics%n
@@ -216,32 +205,38 @@ contains
          P = maooam_model%inner_products%awavenum(k)%P
          typ = maooam_model%inner_products%awavenum(k)%typ
          if (typ == "A") then
-            f => Fa
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fa(P, (j-1)*dy)
+                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fa(P, (j-1)*dy)
+               enddo
+            enddo
          else if (typ == "K") then
-            f => Fk
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fk(M, P, (i-1)*dx, (j-1)*dy)
+                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fk(M, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
          else if (typ == "L") then
-            f => Fl
+            do j = 1, ny
+               do i = 1, nx
+                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fl(H, P, (i-1)*dx, (j-1)*dy)
+                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fl(H, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
          else
             print *, "error in function type"
             stop
          end if
-
-         do j = 1, ny
-            do i = 1, nx
-               psi_a(i, j) = psi_a(i, j) + field(k)*f(M, H, P, (i-1)*dx, (j-1)*dy)
-               T_a(i, j) = T_a(i, j) + field(k + natm)*f(M, H, P, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
       end do
    end subroutine toPhysical_A
 
 
    subroutine toPhysical_O()
-      integer :: H, M, P
+      integer :: H, P
       integer :: i, j, k
       real(wp) :: dx, dy, n
-      CHARACTER :: typ=" "
-      procedure(basis), pointer :: f => null()
 
       ! set up grid
       n = maooam_model%model_configuration%physics%n
@@ -274,7 +269,6 @@ contains
       real(wp) :: dx, dy
       real(wp) :: integrand(nx, ny)
       real(wp) :: integral(nx)
-      procedure(basis), pointer :: f => null()
 
       ! set up grid
       n = maooam_model%model_configuration%physics%n
@@ -292,31 +286,60 @@ contains
          P = maooam_model%inner_products%awavenum(k)%P
          typ = maooam_model%inner_products%awavenum(k)%typ
          if (typ == "A") then
-            f => Fa
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = psi_a(i, j)*Fa(P, (j-1)*dy)
+               enddo
+            enddo
+
+            do j = 1, nx
+               integral(j) = romb(ny, nk(2), integrand(j, :), dy)
+            end do
+            field(k) = romb(nx, nk(1), integral, dx)
+
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = T_a(i, j)  *Fa(P, (j-1)*dy)
+               enddo
+            enddo
          else if (typ == "K") then
-            f => Fk
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = psi_a(i, j)*Fk(M, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
+
+            do j = 1, nx
+               integral(j) = romb(ny, nk(2), integrand(j, :), dy)
+            end do
+            field(k) = romb(nx, nk(1), integral, dx)
+
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = T_a(i, j)  *Fk(M, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
          else if (typ == "L") then
-            f => Fl
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = psi_a(i, j)*Fl(H, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
+
+            do j = 1, nx
+               integral(j) = romb(ny, nk(2), integrand(j, :), dy)
+            end do
+            field(k) = romb(nx, nk(1), integral, dx)
+
+            do j = 1, ny
+               do i = 1, nx
+                  integrand(i, j) = T_a(i, j)  *Fl(H, P, (i-1)*dx, (j-1)*dy)
+               enddo
+            enddo
          else
             print *, "error in function type"
             stop
          end if
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = psi_a(i, j)*f(M, H, P, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
-         
-         do j = 1, nx
-            integral(j) = romb(ny, nk(2), integrand(j, :), dy)
-         end do
-         field(k) = romb(nx, nk(1), integral, dx)
-
-         do j = 1, ny
-            do i = 1, nx
-               integrand(i, j) = T_a(i, j)*f(M, H, P, (i-1)*dx, (j-1)*dy)
-            enddo
-         enddo
 
          do j = 1, nx
             integral(j) = romb(ny, nk(2), integrand(j, :), dy)
@@ -330,15 +353,14 @@ contains
 
    subroutine toFourier_O(nx, ny)
       integer, intent(in) :: nx, ny
-      integer :: H, M, P
+      integer :: H, P
       integer :: i, j, k
       integer :: nk(2)
-      CHARACTER :: typ=" "
+
       real(wp) :: n
       real(wp) :: dx, dy
       real(wp) :: integrand(nx, ny)
       real(wp) :: integral(nx)
-      procedure(basis), pointer :: f => null()
 
       ! set up grid
       n = maooam_model%model_configuration%physics%n

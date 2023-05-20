@@ -7,6 +7,7 @@ NETCDF_LIB=-L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.
 
 # Define relevant compiler options for debug case and normal case for each compiler
 COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -cpp -O2
+# COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -cpp -O0 -g -fcheck='all' -fbacktrace
 LD_FLAGS = $(NETCDF_LIB) $(PDAF_LIB)
 
 FC=mpif90

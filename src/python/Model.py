@@ -20,12 +20,13 @@ import numpy as np
 import xarray as xr
 import scipy
 import sys
-sys.path.append('/home/users/yumengch/qgs-0.2.5/')
+# sys.path.append('/home/users/yumengch/qgs-0.2.5/')
 
-from qgs.params.params import QgParams
-from qgs.integrators.integrator import RungeKuttaIntegrator
-from qgs.functions.tendencies import create_tendencies
-
+# from qgs.params.params import QgParams
+# from qgs.integrators.integrator import RungeKuttaIntegrator
+# from qgs.functions.tendencies import create_tendencies
+# import integrator
+import mod_model
 from ModelWriter import ModelWriter
 
 
@@ -55,11 +56,11 @@ class Model:
             the task_id-th ensemble member
         """
         # init model size
-        self.init_params(config.getfloat('n', 1.5))
+        mod_model.mod_model.initialize_model()
         # init physical grid
         self.nx = config.getint('nx', 9)
         self.ny = config.getint('ny', 9)
-        x0 = 0; x1 = 2*np.pi/self.model_parameters.scale_params.n
+        x0 = 0; x1 = 2*np.pi/config.getfloat('n', 1.5)
         y0 = 0; y1 = np.pi
         X = np.linspace(x0, x1, self.nx)
         Y = np.linspace(y0, y1, self.ny)
@@ -70,14 +71,16 @@ class Model:
         self.dt = 0.1
         # init fields in physical space
         self.varnames = ['psi_a', 'T_a', 'psi_o', 'T_o']
-        self.fields = {varname:np.zeros_like(self.xc) for varname in self.varnames}
+        self.fields = {varname:np.zeros((self.nx, self.ny), order='F') for varname in self.varnames}
         # model initial state
         ln_restart = config.getboolean('ln_restart', False)
         restart_it = config.getint('restart_it', 0)
         self.init_field(ln_restart, restart_it, task_id)
+        self.t = self.t0
+        self.field_p_new = self.field_p.copy()
         # init writer
         self.writer = ModelWriter('maooam_{:03}.nc'.format(task_id), 
-                                  *self.model_parameters.nmod)
+                                  mod_model.mod_model.natm, mod_model.mod_model.noc)
         # write the init time step
         self.writer.write(self.t0*self.dt, 'f', self.field_p)
         # # model index
@@ -102,37 +105,25 @@ class Model:
         self.model_parameters.gotemperature_params.set_params({'gamma': 6.6e8, 'T0': 299.35})
         self.model_parameters.atemperature_params.set_insolation(103.3333, 0)
         self.model_parameters.gotemperature_params.set_insolation(310, 0)
-        
-        # Creating the tendencies functions
-        f, _ = create_tendencies(self.model_parameters)
-        # Defining an integrator
-        self.integrator = RungeKuttaIntegrator(num_threads=1)
-        self.integrator.set_func(f)
 
 
     def init_field(self, ln_restart, restart_it, task_id):
         if ln_restart:
             f = xr.open_dataset('restart/maooam_{:03}.nc'.format(task_id), decode_times=False)
             self.t0 = f['time'][restart_it].to_numpy()
-            self.field_p = np.concatenate([f[varname+'_f'][restart_it].to_numpy() for varname in self.varnames])
+            self.field_p = np.concatenate([f[varname+'_a'][restart_it].to_numpy() for varname in self.varnames])
             f.close()
         else:
-            self.field_p = np.zeros(self.model_parameters.ndim)
+            self.field_p = np.zeros(mod_model.mod_model.ndim)
             self.t0 = 0
 
 
-    def step(self, step):
+    def step(self):
         """step model forward
-
-        Parameters
-        ----------
-        step : int
-            current time step
         """
-        dt = self.dt
-        self.integrator.integrate((self.t0 + step)*dt, (self.t0 + step + 1)*dt, dt, ic=self.field_p, write_steps=0)
-        t, self.field_p = self.integrator.get_trajectories()
-        return t
+        mod_model.mod_model.step(self.field_p, self.t, self.field_p_new)
+        self.field_p[:] = self.field_p_new[:]
+        return self.t
 
 
     def printInfo(self, pe):
@@ -159,67 +150,23 @@ class Model:
 
     def toPhysical_A(self):
         # define spatial domain
-        natm, _ = self.model_parameters.nmod
         self.fields['psi_a'][:] = 0.
         self.fields['T_a'][:] = 0.
-        # get atmospheric components
-        basis = self.model_parameters.atmospheric_basis.num_functions()
-        for i, b in enumerate(basis):
-            self.fields['psi_a'][:] += self.field_p[i]*b(self.xc, self.yc)
-            self.fields['T_a'][:] += self.field_p[i+natm]*b(self.xc, self.yc)
+        mod_model.mod_model.tophysical_a(self.field_p, self.fields['psi_a'], self.fields['T_a'])
 
 
     def toPhysical_O(self):
-        # define spatial domain
-        natm, noc = self.model_parameters.nmod
         self.fields['psi_o'][:] = 0.
         self.fields['T_o'][:] = 0.
-        # get ocean components
-        basis = self.model_parameters.oceanic_basis.num_functions()
-        for i, b in enumerate(basis):
-            self.fields['psi_o'][:] += self.field_p[i+2*natm]*b(self.xc, self.yc)
-            self.fields['T_o'][:] += self.field_p[i+2*natm+noc]*b(self.xc, self.yc)
+        mod_model.mod_model.tophysical_o(self.field_p, self.fields['psi_o'], self.fields['T_o'])
 
 
     def toFourier_A(self):
-        # define spatial domain
-        natm, _ = self.model_parameters.nmod
-        dx = self.xc[0, 1] - self.xc[0, 0]
-        dy = self.yc[1, 0] - self.yc[0, 0]
-
-        # get atmospheric components
-        basis = self.model_parameters.atmospheric_basis.num_functions()
-        for i, b in enumerate(basis):
-            self.field_p[i] = scipy.integrate.romb(
-                            scipy.integrate.romb(
-                                self.fields['psi_a']*b(self.xc, self.yc), dx=dx
-                                ), dx=dy
-                            )
-            self.field_p[i+natm] = scipy.integrate.romb(
-                                scipy.integrate.romb(
-                                    self.fields['T_a']*b(self.xc, self.yc), dx=dx
-                                    ), dx=dy
-                                    )
-        self.field_p[:2*natm] =  self.field_p[:2*natm]*self.model_parameters.scale_params.n/2/np.pi/np.pi
+        mod_model.mod_model.tofourier_a(self.nx, self.ny, self.fields['psi_a'], self.fields['T_a'], self.field_p)
 
 
     def toFourier_O(self):
-        # define spatial domain
-        natm, noc = self.model_parameters.nmod
-        dx = self.xc[0, 1] - self.xc[0, 0]
-        dy = self.yc[1, 0] - self.yc[0, 0]
+        mod_model.mod_model.tofourier_o(self.nx, self.ny, self.fields['psi_o'], self.fields['T_o'], self.field_p)
 
-        # get ocean components
-        basis = self.model_parameters.oceanic_basis.num_functions()
-        for i, b in enumerate(basis):
-            self.field_p[i + 2*natm] = scipy.integrate.romb(
-                            scipy.integrate.romb(
-                                self.fields['psi_o']*b(self.xc, self.yc), dx=dx
-                                ), dx=dy
-                            )
-            self.field_p[i + 2*natm + noc] = scipy.integrate.romb(
-                                scipy.integrate.romb(
-                                    self.fields['T_o']*b(self.xc, self.yc), dx=dx
-                                    ), dx=dy
-                                )
-        self.field_p[2*natm:] =  self.field_p[2*natm:]*self.model_parameters.scale_params.n/2/np.pi/np.pi
+    def __del__(self):
+        mod_model.mod_model.finalize_model()

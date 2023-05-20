@@ -115,7 +115,7 @@ class DAS:
                 if self.pe.mype_world == 0: print(('a', step))
                 self.model.writer.write(t, 'a', self.model.field_p)
             #model  forward
-            t = self.model.step(step)
+            t = self.model.step()
             # output for forecast
             if ((step + 1) % self.model.tw) < self.model.dt:
                 if self.pe.mype_world == 0: print(('f', step))
@@ -125,7 +125,7 @@ class DAS:
                 self.sv.setFields('a')
                 self.obs['ObsA'].doassim = 1
                 self.obs['ObsO'].doassim = 0
-            PDAF_caller.assimilate_pdaf(self)
+            if (not self.is_freerun): PDAF_caller.assimilate_pdaf(self)
 
             if ((not self.isStrong) and (self.sv.component == 'ao')):
                 self.sv.setFields('o')

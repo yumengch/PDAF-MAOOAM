@@ -154,8 +154,7 @@ class Obs:
         self.varnames = config.get('varnames', None).split(',')
 
 
-    def init_dim_obs(self, step, dim_obs, model, isStrong,
-                     mype_filter, dim_state, dim_state_p):
+    def init_dim_obs(self, step, dim_obs, model, isStrong, mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
@@ -181,6 +180,7 @@ class Obs:
             self.dim_obs =0
             return
 
+        print ('PDAFomi: Obs varname: ', self.varnames)
         obs_field = self.get_obs_field(step)
 
         # Count valid observations that
@@ -208,8 +208,7 @@ class Obs:
         self.set_PDAFomi()
 
 
-    def init_dim_obs_gen(self, step, dim_obs, model,
-                         mype_filter, dim_state, dim_state_p):
+    def init_dim_obs_gen(self, step, dim_obs, model, mype_filter, dim_state, dim_state_p):
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
@@ -267,7 +266,6 @@ class Obs:
         self.obs_p = np.zeros(self.dim_obs_p)
         self.obs_p[:self.dim_obs_p] = obs_field_tmp[obs_field_tmp > self.missing_value]
 
-
     def set_id_obs_p(self, obs_field_p, model, isStrong=True):
         """set id_obs_p
 
@@ -281,7 +279,7 @@ class Obs:
         offset = 0
         nobsvar = len(self.varnames)
         if ('psi_a' not in self.varnames) and isStrong: offset = 2*nx*ny
-        self.id_obs_p = np.zeros((self.nrows, self.dim_obs_p))
+        self.id_obs_p = np.zeros((self.nrows, self.dim_obs_p), dtype=int)
         obs_field_tmp = obs_field_p.ravel()
         i = np.arange(nx)[::self.obs_den]
         j = np.arange(ny)[::self.obs_den]
@@ -289,7 +287,6 @@ class Obs:
         self.id_obs_p[0, :self.dim_obs_p] = 1 + offset + np.concatenate([idx + i*nx*ny 
                                                                      for i in range(nobsvar)],
                                                                      dtype=int)[obs_field_tmp > self.missing_value]
- 
 
     def set_ocoord_p(self, obs_field_p, offset, model):
         """set ocoord_p
@@ -312,10 +309,11 @@ class Obs:
         self.ocoord_p[0, :self.dim_obs_p] = np.tile(np.arange(nx)[::self.obs_den]*dx, 
                                                     (ny//self.obs_den + 1)*nobs
                                                     )[obs_field_tmp > self.missing_value]
-        self.ocoord_p[1, :self.dim_obs_p] = np.repeat(np.arange(ny)[::self.obs_den]*dy, 
-                                                      (nx//self.obs_den + 1)*nobs 
-                                                      )[obs_field_tmp > self.missing_value]
-
+        self.ocoord_p[1, :self.dim_obs_p] = np.tile(np.repeat(
+                                                              np.arange(ny)[::self.obs_den]*dy, 
+                                                              (nx//self.obs_den + 1)
+                                                              ),
+                                                    nobs)[obs_field_tmp > self.missing_value]
 
     def set_ivar_obs_p(self, obs_field_p):
         """set ivar_obs_p
@@ -325,14 +323,13 @@ class Obs:
         var_obs = np.concatenate([f[varname+'_var'].to_numpy().ravel()
                                  for varname in self.varnames])
         f.close()
-        obs_field_tmp = obs_field_p.ravel()
+
         self.ivar_obs_p = np.where(var_obs < 1e-12,
-                                   1e14, 
+                                   1e14,
                                    np.ones(
                                           self.dim_obs_p
                                           )/self.rms_obs/var_obs
                                    )
-
 
     def get_obs_field(self, step):
         """retrieve observation field
@@ -353,7 +350,6 @@ class Obs:
                               for varname in self.varnames])
         f.close()
         return obs_field
-
 
     def set_PDAFomi(self):
         """set PDAFomi obs_f object

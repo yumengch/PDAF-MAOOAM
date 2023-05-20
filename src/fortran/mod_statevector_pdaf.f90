@@ -52,10 +52,10 @@ contains
       if (vartype == 'a') then
          sv_atm = .true.
          sv_ocean = .false.
-      else if (component == 'o') then
+      else if (vartype == 'o') then
          sv_atm = .false.
          sv_ocean = .true.
-      else if (component == 'b') then
+      else if (vartype == 'b') then
          sv_atm = .true.
          sv_ocean = .true.
       end if

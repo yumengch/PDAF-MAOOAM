@@ -40,6 +40,7 @@ type :: obs_t
    integer  :: delt_obs
    integer  :: obs_den = 8
    integer  :: nrows
+   integer  :: dim_obs
 
    real(wp) :: rms_obs
    real(wp) :: missing_value
@@ -178,7 +179,7 @@ contains
       nyo = ny/obs(i_obs)%obs_den + 1
       allocate(obs(i_obs)%obs_field_p(nxo, nyo, nVar))
       allocate(obs(i_obs)%var_obs(nxo, nyo, nVar))
-
+      obs(i_obs)%obs_field_p = 0.
    end subroutine init_single_obs
 
    subroutine init_dim_obs(i_obs, step, dim_obs)
@@ -224,7 +225,7 @@ contains
       call get_var_obs(i_obs)
 
       offset = 0
-      if (obs(i_obs)%obsvar == 'o') offset = 2*nx*ny
+      if ((obs(i_obs)%obsvar == 'o') .and. (is_strong)) offset = 2*nx*ny
 
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)
@@ -245,6 +246,7 @@ contains
          enddo
       end do
       dim_obs_p = cnt
+      obs(i_obs)%dim_obs = dim_obs_p
 
       ! Initialize vector of observations on the process sub-domain
       ! Initialize coordinate array of observations
@@ -324,6 +326,7 @@ contains
       nyo = ny/obs(i_obs)%obs_den + 1
       ! count valid observations
       dim_obs_p = nvar*nxo*nyo
+      obs(i_obs)%dim_obs = dim_obs_p
 
       ! Initialize vector of observations on the process sub-domain
       ! Initialize coordinate array of observations

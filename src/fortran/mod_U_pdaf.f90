@@ -73,15 +73,12 @@ contains
 
       varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
       call check( nf90_open('covariance.nc', nf90_nowrite, ncid) )
-      
-      call check( nf90_inq_dimid(ncid, 'rank', dimid) )
-      call check( nf90_inquire_dimension(ncid, dimid, len=rank) )
 
-      allocate(svals(rank))
+      allocate(svals(dim_ens - 1))
       call check( nf90_inq_varid(ncid, 'sigma', varid) )
-      call check( nf90_get_var(ncid, varid, svals, start=[1], count=[rank]) )
+      call check( nf90_get_var(ncid, varid, svals, start=[1], count=[dim_ens - 1]) )
 
-      allocate(eofV(dim_ens - 1, dim_p))
+      allocate(eofV(dim_p, dim_ens - 1))
 
       call toPhysical_A()
       call toPhysical_O()
@@ -94,10 +91,10 @@ contains
          do j = 1, dim_ens - 1
             do i = 1, 4
                call check( nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid) )
-               call check( nf90_get_var(ncid, varid, eofV(j, (i-1)*nx*ny+1:i*nx*ny), start=[1, 1, 1], count=[nx, ny, 1]) )
+               call check( nf90_get_var(ncid, varid, eofV((i-1)*nx*ny+1:i*nx*ny, j), start=[1, 1, j], count=[nx, ny, 1]) )
             end do
          end do
-
+         ens_p = 0.
          call PDAF_sampleens(dim_p, dim_ens, eofV, svals, state_p, ens_p, verbose=1, flag=status_pdaf)
       else
          ens_p(:, 1) = state_p
@@ -175,8 +172,9 @@ contains
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
+         only: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
       use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      USE mod_filteroptions_pdaf, only: filtertype
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -199,15 +197,19 @@ contains
          return
       end if
 
+      if (filtertype == 100) then
+         return
+      end if
+
       if (sv_atm) then
          psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
          T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
          call toFourier_A(nx, ny)
       end if
 
-      offset = 0
-      if (sv_atm) offset = 2*nx*ny
       if (sv_ocean) then
+         offset = 0
+         if (sv_atm) offset = 2*nx*ny
          psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
          T_o   = reshape(state_p(offset+nx*ny+1:offset+2*nx*ny), [nx, ny])
          call toFourier_O(nx, ny)
@@ -242,6 +244,7 @@ contains
          state_p(:nx*ny) = reshape(psi_a, [nx*ny])
          state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
       endif
+
       if (sv_ocean) then
          call toPhysical_O()
          offset = 0
@@ -249,7 +252,6 @@ contains
          state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
          state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
       endif
-
       call SYSTEM_CLOCK(timer_collect_end, t_rate)
       collect_dur = collect_dur + &
         (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
@@ -315,8 +317,8 @@ contains
          variance_p = variance_p + (ens_p(:, i) - state_p)*(ens_p(:, i) - state_p)
       end do
       variance_p = variance_p*inv_dim_ens1
-    
-
+   
+      variance(:dim_p) = variance_p
       if (mype_filter /= 0) then
          call mpi_send(variance_p, dim_p, MPI_DOUBLE_PRECISION, 0, &
                        mype_filter, COMM_filter, MPIerr)

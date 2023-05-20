@@ -22,7 +22,7 @@ firsttime : bool
     global variable for prepoststep_ens_pdaf
 """
 import numpy as np
-import xarray as xr
+import netCDF4
 
 import U_PDAFomi
 
@@ -59,7 +59,7 @@ class PDAFUserFuncs:
         uinv : ndarray
             2D left eigenvector with shape (dim_ens - 1,dim_ens - 1)
         ens_p : ndarray
-            ensemble state vector on local PE (dim_ens, dim_p)
+            ensemble state vector on local PE (dim_p, dim_ens)
         status_pdaf : int
             status of PDAF
 
@@ -75,20 +75,22 @@ class PDAFUserFuncs:
 
         self.das.model.toPhysical_A()
         self.das.model.toPhysical_O()
-        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel() for varname in self.das.sv.varnames])
+        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel(order='F') for varname in self.das.sv.varnames])
         if dim_ens > 1:
-            f = xr.load_dataset('covariance.nc')
-            svals = f['sigma'].to_numpy()[:dim_ens-1]
-            eofV = np.hstack([f[varname+'_svd'].to_numpy()[:dim_ens-1].reshape((dim_ens-1, 
-                                                                                dim_p//4))
+            f = netCDF4.Dataset('covariance.nc')
+            svals = f['sigma'][:dim_ens-1].data
+            eofV = np.hstack([f[varname+'_svd'][:dim_ens-1].data.reshape((dim_ens-1,
+                                                                          dim_p//4))
                               for varname in ['psi_a', 'T_a', 'psi_o', 'T_o']])
+            f.close()
             _, _, ens_p, status_pdaf = PDAF.sampleens(eofV.T, svals, state_p, 
                                                       verbose=1, flag=status_pdaf)
         else:
             ens_p = np.zeros((dim_p, dim_ens))
             ens_p[:, 0] = state_p.copy()
 
-        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel() for varname in self.das.sv.varnames])
+        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel(order='F') for varname in self.das.sv.varnames])
+
         return state_p, uinv, ens_p, status_pdaf
 
 
@@ -104,7 +106,7 @@ class PDAFUserFuncs:
         """
         self.das.model.toPhysical_A()
         self.das.model.toPhysical_O()
-        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel() for varname in self.das.sv.varnames])
+        state_p[:] = np.concatenate([self.das.model.fields[varname].ravel(order='F') for varname in self.das.sv.varnames])
         return state_p
 
 
@@ -125,10 +127,10 @@ class PDAFUserFuncs:
 
         size = self.das.model.nx*self.das.model.ny
         for i, varname in enumerate(self.das.sv.varnames):
-            self.das.model.fields[varname] = \
-                state_p[i*size:(i+1)*size].reshape(self.das.model.ny,
-                                                   self.das.model.nx)
-        
+            self.das.model.fields[varname][:] = \
+                state_p[i*size:(i+1)*size].reshape(self.das.model.nx,
+                                                   self.das.model.ny, order='F')
+
         if 'psi_a' in self.das.sv.varnames:
             self.das.model.toFourier_A()
         if 'psi_o' in self.das.sv.varnames:

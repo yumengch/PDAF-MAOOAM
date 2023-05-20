@@ -48,6 +48,7 @@ class PDAFomiUserFuncs:
         observation_f : ndarray
             a vector of synthetic observations
         """
+
         istart = 0
         for obsname, obs in self.das.obs.items():
             iend = istart + obs.dim_obs

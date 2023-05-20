@@ -41,8 +41,12 @@ contains
 
       call system_clock(timer_getobs_start)
 
-      call writeobs(1, step, observation_f)
-
+      istart = 1
+      do i_obs = 1, n_obs
+         iend = istart + obs(i_obs)%dim_obs - 1
+         call writeobs(i_obs, step, observation_f(istart:iend))
+         istart = iend + 1
+      end do
       call system_clock(timer_getobs_end, t_rate)
       getobs_dur = getobs_dur + &
           (real(timer_getobs_end, wp) - real(timer_getobs_start, wp))/real(t_rate, wp)
@@ -199,8 +203,8 @@ contains
          do j = 1, ny
             do i = 1, nx
                cnt_p = cnt_p + 1
-               coords_p(1, cnt_p) = i*dx
-               coords_p(2, cnt_p) = j*dy
+               coords_p(1, cnt_p) = (i-1)*dx
+               coords_p(2, cnt_p) = (j-1)*dy
             end do
          end do
       end do
