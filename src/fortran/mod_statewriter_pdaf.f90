@@ -107,7 +107,6 @@ contains
       integer :: i, ierr, i_ens
       integer :: i0,tc
 
-      print *, step, vartype, nx, ny, dim_ens
       if (vartype == 'f') then
          i0 = 0
          time_count = time_count + 1

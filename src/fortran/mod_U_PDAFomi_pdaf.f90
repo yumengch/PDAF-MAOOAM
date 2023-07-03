@@ -79,7 +79,7 @@ contains
    !! set up the observation information and obtain the 
    !! size of the observation vector for assimilation
    subroutine init_dim_obs_pdafomi(step, dim_obs)
-      use mod_observations_pdaf, only: init_dim_obs
+      use mod_observations_pdaf, only: init_dim_obs, init_dim_obs_point
       integer, intent(in)  :: step     !< current time step
       integer, intent(out) :: dim_obs  !< dimension of full observation vector
 
@@ -101,7 +101,11 @@ contains
 
       true_step = (step - shift)/factor
       do i_obs = 1, n_obs
-         call init_dim_obs(i_obs, step, this_dim_obs)
+         if (obs(i_obs)%isPoint) then
+            call init_dim_obs_point(i_obs, step, this_dim_obs)
+         else
+            call init_dim_obs(i_obs, step, this_dim_obs)
+         end if
          dim_obs = dim_obs + this_dim_obs
       end do
 

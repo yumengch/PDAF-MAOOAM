@@ -174,6 +174,7 @@ contains
       USE mod_model_pdaf, &             ! Model variables
          only: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
       use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      USE mod_observations_pdaf, ONLY: n_obs, obs
       USE mod_filteroptions_pdaf, only: filtertype
       IMPLICIT NONE
 
@@ -183,6 +184,9 @@ contains
 
       ! local variable
       integer :: offset
+      integer :: i
+      logical :: distributeOcean, distributeAtmos
+      real(wp) :: psi_a_old(129, 129), T_a_old(129, 129)
 
       call SYSTEM_CLOCK(timer_distr_start)
 
@@ -201,13 +205,32 @@ contains
          return
       end if
 
-      if (sv_atm) then
+      if (is_strong) then
+         distributeOcean = .false.
+         distributeAtmos = .false.
+         do i = 1, n_obs
+            if (obs(i)%doassim ==1) then
+               if (obs(i)%obsvar == 'o') distributeOcean = .true.
+               if (obs(i)%obsvar == 'a') distributeAtmos = .true.
+            end if
+         end do
+
+         if (any(obs(:)%isPoint)) then
+            distributeOcean = .true.
+            distributeAtmos = .true.
+         end if
+      end if
+
+
+      psi_a_old(:, :) = psi_a(:, :)
+      T_a_old(:, :) = T_a(:, :)
+      if ((sv_atm) .and. (distributeAtmos)) then
          psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
          T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
          call toFourier_A(nx, ny)
       end if
 
-      if (sv_ocean) then
+      if ((sv_ocean) .and. (distributeOcean)) then
          offset = 0
          if (sv_atm) offset = 2*nx*ny
          psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])

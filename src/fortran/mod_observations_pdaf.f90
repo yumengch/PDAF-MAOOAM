@@ -35,6 +35,7 @@ type :: obs_t
    character(len=50) :: filename
    character(len=50) :: filename_var
    CHARACTER         :: obsvar
+   logical           :: isPoint, isPsi
 
    integer  :: doassim
    integer  :: delt_obs
@@ -50,7 +51,7 @@ type :: obs_t
    type(obs_f)              :: thisobs
    type(obs_l)              :: thisobs_l
 
-   integer :: file_timecount
+   integer :: file_timecount = 0
    integer :: file_timestep
 end type obs_t
 
@@ -103,6 +104,7 @@ contains
       integer  :: doassim
       integer  :: delt_obs
       integer  :: file_timestep
+      integer  :: file_timecount
 
       real(wp) :: rms_obs
       integer  :: disttype
@@ -113,7 +115,8 @@ contains
       integer  :: obs_den
 
       character :: obsvar
-      
+      logical   :: isPoint, isPsi
+
       integer  :: loc_weight
       real(wp) :: local_range
       real(wp) :: srange
@@ -124,7 +127,8 @@ contains
                            doassim, delt_obs, file_timestep, &
                            rms_obs, disttype, ncoord, &
                            nrows, obs_err_type, &
-                           use_global_obs, obs_den, obsvar
+                           use_global_obs, obs_den, obsvar, &
+                           isPoint, isPsi, file_timecount
       namelist /local_nml/ loc_weight, local_range, srange
 
       ! read options for the observation
@@ -143,6 +147,8 @@ contains
       ! assign observation options
       obs(i_obs)%obsvar = obsvar
       obs(i_obs)%obsname = obsname
+      obs(i_obs)%isPoint = isPoint
+      obs(i_obs)%isPsi = isPsi
       obs(i_obs)%filename = filename
       obs(i_obs)%filename_var = filename_var
 
@@ -159,7 +165,7 @@ contains
       obs(i_obs)%thisobs%use_global_obs = use_global_obs
 
       obs(i_obs)%obs_den = obs_den
-      obs(i_obs)%file_timecount = 0
+      obs(i_obs)%file_timecount = file_timecount
       obs(i_obs)%file_timestep = file_timestep
 
       if (mype_world == 0) &
@@ -292,6 +298,91 @@ contains
 
       deallocate(obs_p, ocoord_p, ivar_obs_p)
    end subroutine init_dim_obs
+
+   subroutine init_dim_obs_point(i_obs, step, dim_obs)
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
+      use PDAFomi, only: PDAFomi_gather_obs
+      use mod_config_pdaf, only: is_strong
+
+      integer, intent(in)  :: i_obs
+      integer, intent(in)  :: step
+      integer, intent(out) :: dim_obs
+
+      integer  :: i, j, k
+      integer  :: cnt
+      integer  :: offset
+      integer  :: dim_obs_p
+      integer  :: nvar, nxo, nyo
+
+      real(wp) :: n
+      real(wp) :: dx, dy
+
+      real(wp), allocatable :: obs_p(:)
+      real(wp), allocatable :: ivar_obs_p(:)
+      real(wp), allocatable :: ocoord_p(:, :)
+
+      if (is_strong) then
+         if (mod(step, obs(i_obs)%delt_obs) == 0) then
+             obs(i_obs)%doassim = 1
+         else
+             obs(i_obs)%doassim = 0
+         end if
+      end if
+
+      if (obs(i_obs)%doassim == 0) then
+         dim_obs =0
+         dim_obs_p = 0
+         return
+      end if
+
+      nvar = 2
+
+      call get_obs_field(i_obs)
+      ! read observation variance
+      call get_var_obs(i_obs)
+
+      offset = 0
+      if ((obs(i_obs)%obsvar == 'o') .and. (is_strong)) offset = 1
+
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
+      nxo = nx/obs(i_obs)%obs_den + 1
+      nyo = ny/obs(i_obs)%obs_den + 1
+
+      ! count valid observations
+      dim_obs_p = 1
+      obs(i_obs)%dim_obs = 1
+
+      ! Initialize vector of observations on the process sub-domain
+      ! Initialize coordinate array of observations
+      ! on the process sub-domain
+      allocate(obs_p(dim_obs_p))
+      allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, dim_obs_p))
+      allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, dim_obs_p))
+      allocate(ivar_obs_p(dim_obs_p))
+
+      cnt = 1
+      i = 8
+      j = 8
+      ! loop over 4 variables
+      k = 1
+      if (.not. obs(i_obs)%isPsi) k = 2
+      ! loop over spatial domain
+      obs_p(cnt) = obs(i_obs)%obs_field_p(i, j, k)
+      obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + & 
+         (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
+         (i-1)*obs(i_obs)%obs_den + 1
+      ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
+      ocoord_p(2, cnt) = (j-1)*obs(i_obs)%obs_den*dy
+      ivar_obs_p(cnt) = 1._wp/obs(i_obs)%rms_obs/obs(i_obs)%var_obs(i, j, k)
+      if (obs(i_obs)%var_obs(i, j, k) < 1e-12) ivar_obs_p(cnt) = 1e14
+
+      CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
+                              obs(i_obs)%thisobs%ncoord, local(i_obs)%local_range, dim_obs)
+
+      deallocate(obs_p, ocoord_p, ivar_obs_p)
+   end subroutine init_dim_obs_point
 
    subroutine init_dim_obs_gen(i_obs, dim_obs)
       use mod_model_pdaf, only: nx, ny, pi, maooam_model
