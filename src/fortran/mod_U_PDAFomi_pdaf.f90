@@ -20,7 +20,7 @@ module mod_u_pdafomi_pdaf
 use mod_kind_pdaf, only: wp
 use mod_observations_pdaf, only: n_obs, obs
 use mod_config_pdaf, only: is_strong
-use mod_statevector_pdaf, only: component
+use mod_statevector_pdaf, only: component, sv_atm, sv_ocean
 implicit none
 
 integer :: timer_getobs_start, timer_getobs_end, t_rate
@@ -52,7 +52,7 @@ contains
           (real(timer_getobs_end, wp) - real(timer_getobs_start, wp))/real(t_rate, wp)
    end subroutine get_obs_f
 
-   !! set up the observation information and obtain the 
+   !! set up the observation information and obtain the
    !! size of the observation vector for synthetic obs.
    subroutine init_dim_obs_gen_pdafomi(step, dim_obs)
       use mod_observations_pdaf, only: init_dim_obs_gen
@@ -76,36 +76,37 @@ contains
           (real(timer_dimomi_end, wp) - real(timer_dimomi_start, wp))/real(t_rate, wp)
    end subroutine init_dim_obs_gen_pdafomi
 
-   !! set up the observation information and obtain the 
+   !! set up the observation information and obtain the
    !! size of the observation vector for assimilation
    subroutine init_dim_obs_pdafomi(step, dim_obs)
       use mod_observations_pdaf, only: init_dim_obs, init_dim_obs_point
+
       integer, intent(in)  :: step     !< current time step
       integer, intent(out) :: dim_obs  !< dimension of full observation vector
 
       integer :: this_dim_obs
       integer :: i_obs
-      integer :: true_step, shift, factor
-      logical :: condition
 
       call system_clock(timer_dimomi_start)
 
       dim_obs = 0
-      condition = (.not. is_strong) .and. (component == 'b')
-      factor = 1
-      shift = 0
-      if (condition) then
-         factor = 2
-         shift = -1
-      end if
-
-      true_step = (step - shift)/factor
       do i_obs = 1, n_obs
+
+         obs(i_obs)%doassim = 0
+
+         if (mod(step, obs(i_obs)%delt_obs) == 0) then
+            if ((sv_ocean) .and. (obs(i_obs)%obsvar == 'o')) &
+               obs(i_obs)%doassim = 1
+            if ((sv_atm) .and. (obs(i_obs)%obsvar == 'a')) &
+               obs(i_obs)%doassim = 1
+         end if
+
          if (obs(i_obs)%isPoint) then
             call init_dim_obs_point(i_obs, step, this_dim_obs)
          else
             call init_dim_obs(i_obs, step, this_dim_obs)
          end if
+
          dim_obs = dim_obs + this_dim_obs
       end do
 
@@ -134,8 +135,7 @@ contains
       call system_clock(timer_op_start)
 
       do i_obs = 1, n_obs
-         if (obs(i_obs)%doassim == 1) &
-            call obs_op_gridpoint(i_obs, dim_p, dim_obs, state_p, ostate)
+         call obs_op_gridpoint(i_obs, dim_p, dim_obs, state_p, ostate)
       end do
 
       call system_clock(timer_op_end, t_rate)
@@ -163,8 +163,7 @@ contains
 
       ! call init_dim_obs_l specific for each observation
       do i_obs = 1, n_obs
-         if (obs(i_obs)%doassim == 1) &
-            call init_dim_obs_l(i_obs, dim_obs_l)
+         call init_dim_obs_l(i_obs, dim_obs_l)
       enddo
 
    end subroutine init_dim_obs_l_pdafomi
@@ -219,8 +218,7 @@ contains
 
       ! call localize_covar specific for each observation
       do i_obs = 1, n_obs
-         if (obs(i_obs)%doassim == 1) &
-            call localize_covar(i_obs, dim_p, dim_obs, hp_p, hph, coords_p)
+         call localize_covar(i_obs, dim_p, dim_obs, hp_p, hph, coords_p)
       enddo
 
       ! ****************

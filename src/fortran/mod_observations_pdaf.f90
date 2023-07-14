@@ -210,20 +210,21 @@ contains
       real(wp), allocatable :: ivar_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-      if (is_strong) then
-         if (mod(step, obs(i_obs)%delt_obs) == 0) then
-             obs(i_obs)%doassim = 1
-         else
-             obs(i_obs)%doassim = 0
-         end if
-      end if
-
       if (obs(i_obs)%doassim == 0) then
          dim_obs =0
          dim_obs_p = 0
+
+         allocate(obs_p(1))
+         allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, 1))
+         allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, 1))
+         allocate(ivar_obs_p(1))
+         CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
+                                    obs(i_obs)%thisobs%ncoord, local(i_obs)%local_range, dim_obs)
+         deallocate(obs_p, ocoord_p, ivar_obs_p)
          return
       end if
 
+      print *,'assimilate ', obs(i_obs)%obsvar, ' component'
       nvar = 2
 
       call get_obs_field(i_obs)
@@ -273,7 +274,7 @@ contains
                       obs(i_obs)%missing_value &
                       ) then
                      obs_p(cnt) = obs(i_obs)%obs_field_p(i, j, k)
-                     obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + & 
+                     obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + &
                         (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
                         (i-1)*obs(i_obs)%obs_den + 1
                      ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
@@ -290,7 +291,6 @@ contains
          allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, 1))
          allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, 1))
          allocate(ivar_obs_p(1))
-         obs(i_obs)%thisobs%id_obs_p = 0._wp
       end if
 
       CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
@@ -321,20 +321,13 @@ contains
       real(wp), allocatable :: ivar_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-      if (is_strong) then
-         if (mod(step, obs(i_obs)%delt_obs) == 0) then
-             obs(i_obs)%doassim = 1
-         else
-             obs(i_obs)%doassim = 0
-         end if
-      end if
-
       if (obs(i_obs)%doassim == 0) then
          dim_obs =0
          dim_obs_p = 0
          return
       end if
 
+      print *,'assimilate point', obs(i_obs)%obsvar, ' component'
       nvar = 2
 
       call get_obs_field(i_obs)
@@ -370,7 +363,7 @@ contains
       if (.not. obs(i_obs)%isPsi) k = 2
       ! loop over spatial domain
       obs_p(cnt) = obs(i_obs)%obs_field_p(i, j, k)
-      obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + & 
+      obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + &
          (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
          (i-1)*obs(i_obs)%obs_den + 1
       ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
@@ -482,7 +475,6 @@ contains
          i_end = 2
       else if (obs(i_obs)%obsvar == 'o') then
          i_start = 3
-      else if (obs(i_obs)%obsvar == 'b') then
       else
          print *, '...obsvar is not correct...', i_obs, obs(i_obs)%obsvar
          call abort_parallel()
@@ -529,7 +521,6 @@ contains
          i_end = 2
       else if (obs(i_obs)%obsvar == 'o') then
          i_start = 3
-      else if (obs(i_obs)%obsvar == 'b') then
       else
          print *, '...obsvar is not correct...', obs(i_obs)%obsvar, i_obs
          call abort_parallel()
@@ -574,7 +565,7 @@ contains
       ! Include PDAFomi function
       USE PDAFomi, ONLY: PDAFomi_init_dim_obs_l
       ! Include localization radius and local coordinates
-      USE mod_localization_pdaf, &   
+      USE mod_localization_pdaf, &
             ONLY: coords_l
 
       IMPLICIT NONE

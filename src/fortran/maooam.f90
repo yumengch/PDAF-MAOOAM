@@ -10,7 +10,7 @@ PROGRAM maooam_pdaf
                              writeout, tw, restart_it,&
                              integr, field, field_new, &
                              current_time
-   use mod_observations_pdaf, only: initObs => init, obs
+   use mod_observations_pdaf, only: initObs => init
    use mod_FilterOptions_pdaf, only: filtertype
    use mod_statevector_pdaf, only: initSV
    use mod_obswriter_pdaf, only: init_obs_writer
@@ -45,7 +45,7 @@ PROGRAM maooam_pdaf
 
    if (mype_world == 0) print *, 'Starting the time evolution...'
    timer_model_dur = 0.
-   timer_PDAF_dur = 0.   
+   timer_PDAF_dur = 0.
    collect_dur = 0._wp
    distr_dur = 0._wp
    next_dur = 0._wp
@@ -56,11 +56,13 @@ PROGRAM maooam_pdaf
 
    t= current_time(1)
    DO it = 1, total_steps
+      ! write analysis data into netCDF
       IF ((writeout) .AND. (mod(it-1, tw) < integr%dt)) THEN
          if (mype_world == 0 ) print *, 'a', it
          call write_model(t, 'a', field(1:), natm, noc)
       endif
 
+      ! model integration
       call SYSTEM_CLOCK(timer_model_start)
       CALL integr%step(field, t, field_new)
       field = field_new
@@ -68,25 +70,15 @@ PROGRAM maooam_pdaf
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
 
+      ! write forcast data into netCDF
       IF ((writeout) .AND. (mod(it, tw) < integr%dt)) THEN
          if (mype_world == 0) print *, 'f', it
          call write_model(t, 'f', field(1:), natm, noc)
       end if
 
+      ! do assimilation
       call SYSTEM_CLOCK(timer_PDAF_start)
-      if ((.not. is_Strong) .and. (component == 'b')) then
-          call setField('a')
-          obs(1)%doassim = 1
-          obs(2)%doassim = 0
-      end if
       if (.not. is_freerun) call assimilate_pdaf()
-
-      if ((.not. is_strong) .and. (component == 'b')) then
-          call setField('o')
-          obs(1)%doassim = 0
-          obs(2)%doassim = 1
-          call assimilate_pdaf()
-      end if
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)

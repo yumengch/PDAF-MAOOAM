@@ -6,16 +6,16 @@
 !! Used in all filters
 !!
 !! The subroutine is called before each forecast phase
-!! by PDAF_get_state. It has to initialize the number 
-!! of time steps until the next available observation 
-!! (nsteps) and the current model time (time). In 
+!! by PDAF_get_state. It has to initialize the number
+!! of time steps until the next available observation
+!! (nsteps) and the current model time (time). In
 !! addition the exit flag (exit) has to be initialized.
-!! It indicates if the data assimilation process is 
-!! completed such that the ensemble loop in the model 
+!! It indicates if the data assimilation process is
+!! completed such that the ensemble loop in the model
 !! routine can be exited.
 !!
 !! The routine is called from PDAF_get_state by all processes
-!!         
+!!
 !! Version for the 2D tutorial model.
 !!
 !! __Revision history:__
@@ -104,53 +104,24 @@ contains
    end subroutine init_ens_pdaf
 
    SUBROUTINE next_observation_pdaf(stepnow, nsteps, doexit, time)
-
       USE mod_model_pdaf, ONLY: total_steps
       USE mod_observations_pdaf, ONLY: obs
-      use mod_statevector_pdaf, only: component
+      use mod_statevector_pdaf, only: component, sv_atm, sv_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
-      INTEGER, INTENT(in)  :: stepnow  !< Number of the current time step
-      INTEGER, INTENT(out) :: nsteps   !< Number of time steps until next obs
-      INTEGER, INTENT(out) :: doexit   !< Whether to exit forecasting (1 for exit)
-      REAL(wp), INTENT(out)    :: time     !< Current model (physical) time
+      INTEGER, INTENT(in)   :: stepnow  !< Number of the current time step
+      INTEGER, INTENT(out)  :: nsteps   !< Number of time steps until next obs
+      INTEGER, INTENT(out)  :: doexit   !< Whether to exit forecasting (1 for exit)
+      REAL(wp), INTENT(out) :: time     !< Current model (physical) time
 
-      integer :: delt_obs
-      integer :: factor, shift
-      integer :: true_step
-      logical :: condition
-
-      call SYSTEM_CLOCK(timer_next_start)      
+      call SYSTEM_CLOCK(timer_next_start)
       ! *******************************************************
       ! *** Set number of time steps until next observation ***
       ! *******************************************************
-      condition = (.not. is_strong) .and. (component == 'b')
-      factor = 1
-      shift = 0
-      if (condition) then
-         factor = 2
-         shift = -1
-      end if
+      nsteps = minval(obs(:)%delt_obs)
 
-      true_step = (stepnow - shift)/factor
-      delt_obs = minval(obs(:)%delt_obs)
-      if (condition) then
-         if (mod(true_step + delt_obs, obs(1)%delt_obs) /= 0) &
-             shift = 0
-      end if
-
-      if (factor*true_step - stepnow == 1) then
-         ! weak coupling and assimilated atmosphere
-         nsteps = 1
-         if (mod(true_step, obs(2)%delt_obs) /= 0) &
-                nsteps = nsteps + delt_obs*factor + shift
-      else
-         ! strong coupling or weak coupling assimilated ocean
-         nsteps = delt_obs*factor + shift
-      end if
-
-      IF (true_step + nsteps <= total_steps*factor) THEN
+      IF (stepnow + nsteps <= total_steps) THEN
          ! *** During the assimilation process ***
          doexit = 0          ! Not used in this impl
 
@@ -164,16 +135,17 @@ contains
          IF (mype_world == 0) WRITE (*, '(i7, 3x, a)') &
             stepnow, 'No more observations - end assimilation'
       END IF
-    call SYSTEM_CLOCK(timer_next_end, t_rate)
-    next_dur = next_dur + &
-        (real(timer_next_end, wp) - real(timer_next_start, wp))/real(t_rate, wp)      
+
+      call SYSTEM_CLOCK(timer_next_end, t_rate)
+      next_dur = next_dur + &
+        (real(timer_next_end, wp) - real(timer_next_start, wp))/real(t_rate, wp)
    END SUBROUTINE next_observation_pdaf
 
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
          only: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
-      use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean, distributeObsOnly
       USE mod_observations_pdaf, ONLY: n_obs, obs
       USE mod_filteroptions_pdaf, only: filtertype
       IMPLICIT NONE
@@ -201,11 +173,11 @@ contains
          return
       end if
 
-      if (filtertype == 100) then
-         return
-      end if
+      if (filtertype == 100) return
 
-      if (is_strong) then
+      distributeOcean = sv_ocean
+      distributeAtmos = sv_atm
+      if ((is_strong) .and. (distributeObsOnly) .and. (.not. any(obs(:)%isPoint))) then
          distributeOcean = .false.
          distributeAtmos = .false.
          do i = 1, n_obs
@@ -214,23 +186,18 @@ contains
                if (obs(i)%obsvar == 'a') distributeAtmos = .true.
             end if
          end do
-
-         if (any(obs(:)%isPoint)) then
-            distributeOcean = .true.
-            distributeAtmos = .true.
-         end if
       end if
 
 
       psi_a_old(:, :) = psi_a(:, :)
       T_a_old(:, :) = T_a(:, :)
-      if ((sv_atm) .and. (distributeAtmos)) then
+      if (distributeAtmos) then
          psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
          T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
          call toFourier_A(nx, ny)
       end if
 
-      if ((sv_ocean) .and. (distributeOcean)) then
+      if (distributeOcean) then
          offset = 0
          if (sv_atm) offset = 2*nx*ny
          psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
@@ -321,7 +288,7 @@ contains
          endif
       endif
 
-      ! ensemble mean    
+      ! ensemble mean
       state_p = 0._wp
       inv_dim_ens = 1._wp/dim_ens
       if (dim_ens > 1) then
@@ -331,7 +298,7 @@ contains
       end if
       do i = 1, dim_ens
          state_p = state_p + ens_p(:, i)
-      end do 
+      end do
       state_p = state_p*inv_dim_ens
 
       ! ensemble variance
@@ -340,7 +307,7 @@ contains
          variance_p = variance_p + (ens_p(:, i) - state_p)*(ens_p(:, i) - state_p)
       end do
       variance_p = variance_p*inv_dim_ens1
-   
+
       variance(:dim_p) = variance_p
       if (mype_filter /= 0) then
          call mpi_send(variance_p, dim_p, MPI_DOUBLE_PRECISION, 0, &
