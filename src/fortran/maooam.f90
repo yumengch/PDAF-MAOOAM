@@ -76,14 +76,17 @@ PROGRAM maooam_pdaf
          call write_model(t, 'f', field(1:), natm, noc)
       end if
 
+      ! if ((.not. is_freerun) .and. (it >= next_avg_step)) then
+      !    call time_average()
+
+      ! end if
+
       ! do assimilation
       call SYSTEM_CLOCK(timer_PDAF_start)
-      if (.not. is_freerun) call assimilate_pdaf()
+      if (.not. is_freerun) call assimilate_pdaf(it)
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)
-
-
 
    END DO
 

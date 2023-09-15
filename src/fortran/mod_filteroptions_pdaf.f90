@@ -48,12 +48,13 @@ integer :: incremental = 0
 ! Definition of factor in covar. matrix used in SEIK
 ! - (0) for dim_ens^-1 (old SEIK)
 ! - (1) for (dim_ens-1)^-1 (real ensemble covariance matrix)
-! This parameter has also to be set internally in PDAF_init. 
+! This parameter has also to be set internally in PDAF_init.
 integer :: covartype = 1
 ! rank to be considered for inversion of HPH in analysis of EnKF
 ! (0) for analysis w/o eigendecomposition
 ! if set to >=ensemble size, it is reset to ensemble size - 1
 integer :: rank_analysis_enkf = 0
+
 namelist /filter_nml/ filtertype, subtype, type_trans, &
                       type_sqrt, incremental, covartype, &
                       rank_analysis_enkf

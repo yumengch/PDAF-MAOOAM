@@ -1,8 +1,10 @@
 module mod_config_pdaf
+   use mod_kind_pdaf, only: wp
 implicit none
 
 integer :: screen
-logical :: is_freerun, is_strong
+logical :: is_freerun, is_strong, do_hybrid_ens
+real(wp) :: hybrid_coeff
 
 contains
    subroutine read_namelist
@@ -11,7 +13,7 @@ contains
       use mod_model_pdaf, only: model_nml
       use mod_statevector_pdaf, only: state_vector_nml
 
-      namelist /PDAF_nml/ screen, is_strong, is_freerun
+      namelist /PDAF_nml/ screen, is_strong, is_freerun, do_hybrid_ens, hybrid_coeff
       open (20, file='PDAF_config.nml')
       read(20, nml=filter_nml)
       rewind(20)

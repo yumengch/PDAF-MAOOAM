@@ -15,7 +15,7 @@ module mod_assimilate_pdaf
 implicit none
 
 contains
-   SUBROUTINE assimilate_pdaf()
+   SUBROUTINE assimilate_pdaf(it)
       USE PDAFomi, ONLY: PDAFomi_dealloc
       USE PDAF_mod_filter,ONLY: cnt_steps, step_obs, nsteps
       USE pdaf_interfaces_module, &   ! Interface definitions to PDAF core routines
@@ -26,7 +26,7 @@ contains
       USE mod_filteroptions_pdaf, &         ! Variables for assimilation
            ONLY: filtertype
       use mod_config_pdaf, only: is_strong
-      use mod_statevector_pdaf, only: setField, component
+      use mod_statevector_pdaf, only: setField, component, observed_component, step_both
       USE mod_U_pdaf, only: collect_state_pdaf, &    ! Collect a state vector from model fields
                             distribute_state_pdaf, &  ! Distribute a state vector to model fields
                             next_observation_pdaf, &  ! Provide time step of next observation
@@ -41,8 +41,9 @@ contains
                              localize_covar_pdafomi, & ! Apply localization to covariance matrix in LEnKF
                              init_dim_obs_gen_pdafomi, &
                              get_obs_f
-      use mod_observations_pdaf, only: obs
+      use mod_observations_pdaf, only: obs, set_doassim_pdaf
       IMPLICIT NONE
+      integer, intent(in) :: it
       ! *** Local variables ***
       INTEGER :: status_pdaf          ! PDAF status flag
       integer :: steps, time, doexit
@@ -61,6 +62,11 @@ contains
 
       ! Call assimilate routine for global or local filter
       IF (localfilter==1) THEN
+         if (is_strong .and. component== 'b' .and. mod(it, step_both) == 0) then
+             call setField('b')
+         else
+             call setField(observed_component)
+         end if
          CALL PDAFomi_assimilate_local(collect_state_pdaf, distribute_state_pdaf, &
               init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, init_n_domains_pdaf, &
               init_dim_l_pdaf, init_dim_obs_l_pdafomi, g2l_state_pdaf, l2g_state_pdaf, &
@@ -85,6 +91,7 @@ contains
             if ((.not. is_strong) .and. (cnt_steps + 1 == nsteps) .and. (component == 'b')) then
                call setField('o')
                iobs = findloc(obs(:)%obsvar, 'o')
+               call set_doassim_pdaf(it)
                if (mod(step_obs, obs(iobs(1))%delt_obs) == 0) then
                   CALL PDAF_put_state_estkf(collect_state_pdaf, init_dim_obs_pdafomi, obs_op_pdafomi, &
                                           PDAFomi_init_obs_f_cb, prepoststep_ens_pdaf, &
@@ -102,7 +109,12 @@ contains
                end if
                call setField('a')
             end if
-
+            if (is_strong .and. component== 'b' .and. mod(it, step_both) == 0) then
+                call setField('b')
+            else
+                call setField(observed_component)
+            end if
+            call set_doassim_pdaf(it)
             CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
                  init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &
                  next_observation_pdaf, status_pdaf)

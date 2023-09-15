@@ -39,18 +39,27 @@ real(wp), allocatable :: field_new(:)
 
 real(wp), allocatable :: psi_a(:, :)
 real(wp), allocatable :: T_a(:, :)
-
 real(wp), allocatable :: psi_o(:, :)
 real(wp), allocatable :: T_o(:, :)
+
+real(wp), allocatable :: psi_a_avg(:, :)
+real(wp), allocatable :: T_a_avg(:, :)
+real(wp), allocatable :: psi_o_avg(:, :)
+real(wp), allocatable :: T_o_avg(:, :)
 
 logical :: writeout
 logical :: ln_restart
 integer :: restart_it
 integer :: tw
+real(wp) :: ensscale(4)
+
+integer :: avg_time_step
+integer :: next_avg_step
+
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it, tw
+namelist /model_nml/ nx, ny, ln_restart, restart_it, tw, ensscale! , avg_time_step
 
 contains
    !> init model
@@ -82,6 +91,16 @@ contains
       if (.not. allocated(T_a)) allocate(T_a(nx, ny))
       if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
       if (.not. allocated(T_o)) allocate(T_o(nx, ny))
+
+      if (.not. allocated(psi_a_avg)) allocate(psi_a_avg(nx, ny))
+      if (.not. allocated(T_a_avg)) allocate(T_a_avg(nx, ny))
+      if (.not. allocated(psi_o_avg)) allocate(psi_o_avg(nx, ny))
+      if (.not. allocated(T_o_avg)) allocate(T_o_avg(nx, ny))
+
+      psi_a_avg = 0.
+      T_a_avg = 0.
+      psi_o_avg = 0.
+      T_o_avg = 0.
 
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
@@ -144,6 +163,18 @@ contains
       end do
       call check( nf90_close(ncid) )
    end subroutine read_restart
+
+   !> get time average of the model state
+   subroutine time_average()
+      call toPhysical_A()
+      call toPhysical_O()
+
+      psi_a_avg = psi_a_avg + psi_a/avg_time_step
+      T_a_avg = T_a_avg + T_a/avg_time_step
+      psi_o_avg = psi_o_avg + psi_o/avg_time_step
+      T_o_avg = T_o_avg + T_o/avg_time_step
+   end subroutine time_average
+
 
    real(wp) function Fa(P, y)
       integer,  intent(in) :: P

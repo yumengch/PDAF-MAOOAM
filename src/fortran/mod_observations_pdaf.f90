@@ -224,7 +224,7 @@ contains
          return
       end if
 
-      print *,'assimilate ', obs(i_obs)%obsvar, ' component'
+      print *, 'assimilate ', obs(i_obs)%obsvar, ' component'
       nvar = 2
 
       call get_obs_field(i_obs)
@@ -396,7 +396,7 @@ contains
       real(wp), allocatable :: ivar_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-
+      obs(i_obs)%doassim = 1
       nvar = 4
       ! read observation variance
       call get_var_obs(i_obs)
@@ -426,7 +426,7 @@ contains
             ! loop over spatial domain
             do j = 1, nyo
                do i = 1, nxo
-                  obs_p(cnt) = obs(i_obs)%obs_field_p(i, j, k)
+                  obs_p(cnt) = 0. ! obs(i_obs)%obs_field_p(i, j, k)
                   obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + &
                      (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
                      (i-1)*obs(i_obs)%obs_den + 1
@@ -475,6 +475,7 @@ contains
          i_end = 2
       else if (obs(i_obs)%obsvar == 'o') then
          i_start = 3
+      else if (obs(i_obs)%obsvar == 'b') then
       else
          print *, '...obsvar is not correct...', i_obs, obs(i_obs)%obsvar
          call abort_parallel()
@@ -521,6 +522,7 @@ contains
          i_end = 2
       else if (obs(i_obs)%obsvar == 'o') then
          i_start = 3
+      else if (obs(i_obs)%obsvar == 'b') then
       else
          print *, '...obsvar is not correct...', obs(i_obs)%obsvar, i_obs
          call abort_parallel()
@@ -606,6 +608,24 @@ contains
                                   local(i_obs)%local_range, local(i_obs)%srange, &
                                   coords_p, HP_p, HPH)
    END SUBROUTINE localize_covar
+
+   subroutine set_doassim_pdaf(step)
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      integer, intent(in) :: step
+      integer :: i_obs
+      do i_obs = 1, n_obs
+         obs(i_obs)%doassim = 0
+         if (mod(step, obs(i_obs)%delt_obs) == 0) then
+            if ((sv_ocean) .and. (obs(i_obs)%obsvar == 'o')) &
+               obs(i_obs)%doassim = 1
+            if ((sv_atm) .and. (obs(i_obs)%obsvar == 'a')) &
+               obs(i_obs)%doassim = 1
+         end if
+         if (obs(i_obs)%obsvar == 'b') then
+            obs(i_obs)%doassim = 1
+         end if
+      end do
+   end subroutine set_doassim_pdaf
 
    subroutine finalize_obs()
       integer :: i_obs

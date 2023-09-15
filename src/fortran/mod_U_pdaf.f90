@@ -24,7 +24,7 @@
 !!
 module mod_U_pdaf
 use mod_kind_pdaf, only: wp
-use mod_config_pdaf, only: is_freerun, is_strong
+use mod_config_pdaf, only: is_freerun, is_strong, do_hybrid_ens, hybrid_coeff
 USE mod_parallel_pdaf, ONLY: mype_world
 implicit none
 
@@ -35,13 +35,20 @@ integer :: timer_distr_start, timer_distr_end
 integer :: timer_next_start, timer_next_end
 integer :: timer_prepost_start, timer_prepost_end
 real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
+real(wp), allocatable :: initial_ens_p(:, :)
+integer  :: step_pdaf = 0
 contains
    subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       use netcdf
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, psi_a, T_a, psi_o, T_o, toPhysical_A, toPhysical_O
+         ONLY: nx, ny, &
+               psi_a, T_a, psi_o, T_o, &
+               toPhysical_A, toPhysical_O, &
+               ensscale, read_restart, field, natm, noc, restart_it
       use mod_nfcheck_pdaf, only: check
       use pdaf_interfaces_module, only: PDAF_sampleens
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      use mod_parallel_pdaf, only: task_id
       implicit none
       ! type of filter to initialize
       integer, intent(in) :: filtertype
@@ -62,11 +69,47 @@ contains
       integer :: ncid, dimid, varid
       integer :: i, j
       integer :: rank
+      integer :: offset
       real(wp), allocatable :: eofV(:, :)
       real(wp), allocatable :: svals(:)
       character(len=5) :: varname(4)
+      character(len=3)  :: ens_id_str
+
       ! convert to physical space
       if (.not. is_freerun) then
+         if (do_hybrid_ens) then
+            allocate(initial_ens_p(dim_p, dim_ens))
+            state_p = 0.
+            do i = dim_ens, 1, - 1
+               write(ens_id_str, '(I3.3)') i
+               call read_restart('restart/maooam_'//trim(ens_id_str)//'.nc', natm, noc, field(1:), restart_it)
+               if (is_strong .or. sv_atm) then
+                  if (mype_world == 0) print *, 'collect atmosphere'
+                  call toPhysical_A()
+                  ens_p(:nx*ny, i) = reshape(psi_a, [nx*ny])
+                  ens_p(nx*ny+1:2*nx*ny, i) = reshape(T_a, [nx*ny])
+               endif
+
+               if (is_strong .or. sv_ocean) then
+                  call toPhysical_O()
+                  offset = 0
+                  if ((is_strong) .or. (sv_atm)) offset = 2*nx*ny
+                  if (mype_world == 0) print *, 'collect ocean', offset
+                  ens_p(offset+1:offset+nx*ny, i) = reshape(psi_o, [nx*ny])
+                  ens_p(offset+nx*ny+1:offset+2*nx*ny, i) = reshape(T_o, [nx*ny])
+               endif
+               state_p = state_p + ens_p(:, i)/dim_ens
+            end do
+            if (task_id /= i + 1) then
+               print *, 'the reading of restart for ', task_id, ' after loop should not be executed...'
+               write(ens_id_str, '(I3.3)') task_id
+               call read_restart('restart/maooam_'//trim(ens_id_str)//'.nc', natm, noc, field(1:), restart_it)
+            end if
+            do i = 1, dim_ens
+               initial_ens_p(:, i) = ens_p(:, i) - state_p
+            end do
+         end if
+
          ens_p = 0.
          return
       end if
@@ -96,9 +139,25 @@ contains
          end do
          ens_p = 0.
          call PDAF_sampleens(dim_p, dim_ens, eofV, svals, state_p, ens_p, verbose=1, flag=status_pdaf)
+         ! get ensemble mean
+         state_p = 0.
+         do j = 1, dim_ens
+            state_p = state_p + ens_p(:, j)/dim_ens
+         end do
+
+         ! get inflate ensemble spread
+         do i = 0, 3
+            print *, 'The ensscale of the ', i+1, '-th variable', ensscale(i+1)
+            do j = 1, dim_ens
+               ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) = ensscale(i+1)*(ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) - &
+                                                                  state_p(1 + i*nx*ny:(i+1)*nx*ny)) &
+                                                   + state_p(1 + i*nx*ny:(i+1)*nx*ny)
+            end do
+         enddo
       else
          ens_p(:, 1) = state_p
       end if
+
       call check( nf90_close(ncid) )
       deallocate(eofV, svals)
    end subroutine init_ens_pdaf
@@ -177,6 +236,7 @@ contains
 
       distributeOcean = sv_ocean
       distributeAtmos = sv_atm
+      if (mype_world == 0) print *, 'sv_ocean', sv_ocean, 'sv_atm', sv_atm
       if ((is_strong) .and. (distributeObsOnly) .and. (.not. any(obs(:)%isPoint))) then
          distributeOcean = .false.
          distributeAtmos = .false.
@@ -188,16 +248,18 @@ contains
          end do
       end if
 
-
       psi_a_old(:, :) = psi_a(:, :)
       T_a_old(:, :) = T_a(:, :)
+
       if (distributeAtmos) then
+         if (mype_world == 0) print *, 'distribute to atmosphere component'
          psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
          T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
          call toFourier_A(nx, ny)
       end if
 
       if (distributeOcean) then
+         if (mype_world == 0) print *, 'distribute to ocean component'
          offset = 0
          if (sv_atm) offset = 2*nx*ny
          psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
@@ -229,16 +291,19 @@ contains
       ! *** Initialize state vector from model fields ***
       ! *** for process-local model domain            ***
       ! *************************************************
-      if (sv_atm) then
+      state_p = 0.
+      if (is_strong .or. sv_atm) then
+         if (mype_world == 0) print *, 'collect atmosphere'
          call toPhysical_A()
          state_p(:nx*ny) = reshape(psi_a, [nx*ny])
          state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
       endif
 
-      if (sv_ocean) then
+      if (is_strong .or. sv_ocean) then
          call toPhysical_O()
          offset = 0
-         if (sv_atm) offset = 2*nx*ny
+         if ((is_strong) .or. (sv_atm)) offset = 2*nx*ny
+         if (mype_world == 0) print *, 'collect ocean', offset
          state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
          state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
       endif
@@ -280,6 +345,7 @@ contains
       ! pre- and post-processing of ensemble
       if (firsttime) then
          print *, 'Analyze initial state ensemble'
+
       else
          if (step < 0) then
             print *, 'Analyze forecasted state ensemble'
@@ -288,18 +354,27 @@ contains
          endif
       endif
 
+
+
       ! ensemble mean
-      state_p = 0._wp
       inv_dim_ens = 1._wp/dim_ens
       if (dim_ens > 1) then
          inv_dim_ens1 = 1._wp/(dim_ens - 1)
       else
          inv_dim_ens1 = 0._wp
       end if
+
+      state_p = 0._wp
       do i = 1, dim_ens
          state_p = state_p + ens_p(:, i)
       end do
       state_p = state_p*inv_dim_ens
+
+      if ((do_hybrid_ens) .and. (step < 0)) then
+         do i = 1, dim_ens
+            ens_p(:, i) = state_p + hybrid_coeff*(ens_p(:, i) - state_p) + (1 - hybrid_coeff)*initial_ens_p(:, i)
+         end do
+      end if
 
       ! ensemble variance
       variance_p = 0._wp

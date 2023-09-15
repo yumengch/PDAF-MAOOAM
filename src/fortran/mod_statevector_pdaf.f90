@@ -24,11 +24,13 @@ integer :: dim_state_p
 integer :: dim_state
 integer :: dim_ens
 integer :: nVar
+integer :: step_both = 1
 logical :: sv_atm = .false.
 logical :: sv_ocean = .false.
 logical :: distributeObsOnly = .true.
-CHARACTER :: component
-namelist /state_vector_nml/ component, distributeObsOnly
+CHARACTER :: component = 'b'
+CHARACTER :: observed_component = 'b'
+namelist /state_vector_nml/ component, observed_component, step_both, distributeObsOnly
 contains
    subroutine initSV(is_strong)
       use mod_model_pdaf, only: nx, ny
