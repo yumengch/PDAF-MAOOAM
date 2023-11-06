@@ -3,7 +3,7 @@ module mod_config_pdaf
 implicit none
 
 integer :: screen
-logical :: is_freerun, is_strong, do_hybrid_ens
+logical :: is_freerun, is_strong, do_hybrid_ens=.false., do_time_avgs=.false.
 real(wp) :: hybrid_coeff
 
 contains
@@ -13,7 +13,7 @@ contains
       use mod_model_pdaf, only: model_nml
       use mod_statevector_pdaf, only: state_vector_nml
 
-      namelist /PDAF_nml/ screen, is_strong, is_freerun, do_hybrid_ens, hybrid_coeff
+      namelist /PDAF_nml/ screen, is_strong, is_freerun, do_hybrid_ens, hybrid_coeff, do_time_avgs
       open (20, file='PDAF_config.nml')
       read(20, nml=filter_nml)
       rewind(20)

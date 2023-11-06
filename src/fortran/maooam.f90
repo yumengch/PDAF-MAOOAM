@@ -1,6 +1,6 @@
 PROGRAM maooam_pdaf
    use mod_kind_pdaf, only: wp
-   use mod_config_pdaf, only: screen, is_freerun, is_strong, read_namelist
+   use mod_config_pdaf, only: screen, is_freerun, is_strong, read_namelist, do_time_avgs
    use mod_parallel_pdaf, only: initialize_parallel_pdaf, mype_world, &
                                 init_parallel_pdaf, finalize_parallel_pdaf
    use mod_statevector_pdaf, only: component, setField
@@ -8,8 +8,9 @@ PROGRAM maooam_pdaf
                              natm, noc, &
                              finalize_model, total_steps, &
                              writeout, tw, restart_it,&
-                             integr, field, field_new, &
-                             current_time
+                             integr, field, field_new, increments_field, &
+                             current_time, do_iau_ocean, nudging_steps, &
+                             time_average
    use mod_observations_pdaf, only: initObs => init
    use mod_FilterOptions_pdaf, only: filtertype
    use mod_statevector_pdaf, only: initSV
@@ -59,13 +60,16 @@ PROGRAM maooam_pdaf
       ! write analysis data into netCDF
       IF ((writeout) .AND. (mod(it-1, tw) < integr%dt)) THEN
          if (mype_world == 0 ) print *, 'a', it
-         call write_model(t, 'a', field(1:), natm, noc)
+         ! call write_model(t, 'a', field(1:), natm, noc)
       endif
 
       ! model integration
       call SYSTEM_CLOCK(timer_model_start)
       CALL integr%step(field, t, field_new)
       field = field_new
+      if (do_iau_ocean) then
+         field(2*natm+1:) = field(2*natm+1:) + increments_field(2*natm+1:)/nudging_steps
+      end if
       call SYSTEM_CLOCK(timer_model_end, t_rate)
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
@@ -73,13 +77,12 @@ PROGRAM maooam_pdaf
       ! write forcast data into netCDF
       IF ((writeout) .AND. (mod(it, tw) < integr%dt)) THEN
          if (mype_world == 0) print *, 'f', it
-         call write_model(t, 'f', field(1:), natm, noc)
+         ! call write_model(t, 'f', field(1:), natm, noc)
       end if
 
-      ! if ((.not. is_freerun) .and. (it >= next_avg_step)) then
-      !    call time_average()
-
-      ! end if
+       if ((.not. is_freerun) .and. (do_time_avgs)) then
+          call time_average()
+       end if
 
       ! do assimilation
       call SYSTEM_CLOCK(timer_PDAF_start)

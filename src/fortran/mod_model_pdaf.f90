@@ -47,6 +47,9 @@ real(wp), allocatable :: T_a_avg(:, :)
 real(wp), allocatable :: psi_o_avg(:, :)
 real(wp), allocatable :: T_o_avg(:, :)
 
+real(wp), allocatable :: field_iau_old(:)
+real(wp), allocatable :: increments_field(:)
+
 logical :: writeout
 logical :: ln_restart
 integer :: restart_it
@@ -54,12 +57,16 @@ integer :: tw
 real(wp) :: ensscale(4)
 
 integer :: avg_time_step
-integer :: next_avg_step
+integer :: saved_avg_step
+
+logical :: do_iau_ocean = .false.
+logical :: do_iau_atmos = .false.
+integer :: nudging_steps = 0
 
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it, tw, ensscale! , avg_time_step
+namelist /model_nml/ nx, ny, ln_restart, restart_it, tw, ensscale, do_iau_ocean, nudging_steps, avg_time_step
 
 contains
    !> init model
@@ -92,15 +99,24 @@ contains
       if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
       if (.not. allocated(T_o)) allocate(T_o(nx, ny))
 
-      if (.not. allocated(psi_a_avg)) allocate(psi_a_avg(nx, ny))
-      if (.not. allocated(T_a_avg)) allocate(T_a_avg(nx, ny))
-      if (.not. allocated(psi_o_avg)) allocate(psi_o_avg(nx, ny))
-      if (.not. allocated(T_o_avg)) allocate(T_o_avg(nx, ny))
+      if (avg_time_step > 1) then
+         if (.not. allocated(psi_a_avg)) allocate(psi_a_avg(nx, ny))
+         if (.not. allocated(T_a_avg)) allocate(T_a_avg(nx, ny))
+         if (.not. allocated(psi_o_avg)) allocate(psi_o_avg(nx, ny))
+         if (.not. allocated(T_o_avg)) allocate(T_o_avg(nx, ny))
 
-      psi_a_avg = 0.
-      T_a_avg = 0.
-      psi_o_avg = 0.
-      T_o_avg = 0.
+         psi_a_avg = 0.
+         T_a_avg = 0.
+         psi_o_avg = 0.
+         T_o_avg = 0.
+         saved_avg_step = 0
+      end if
+
+      if (do_iau_ocean) then
+         allocate(field_iau_old(0:ndim))
+         allocate(increments_field(0:ndim))
+         increments_field = 0.
+      end if
 
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
@@ -169,10 +185,20 @@ contains
       call toPhysical_A()
       call toPhysical_O()
 
+      if (saved_avg_step == avg_time_step) then
+         psi_a_avg = 0.
+         T_a_avg = 0.
+         psi_o_avg = 0.
+         T_o_avg = 0.
+         saved_avg_step = 0
+      end if
+
       psi_a_avg = psi_a_avg + psi_a/avg_time_step
       T_a_avg = T_a_avg + T_a/avg_time_step
       psi_o_avg = psi_o_avg + psi_o/avg_time_step
       T_o_avg = T_o_avg + T_o/avg_time_step
+
+      saved_avg_step = saved_avg_step + 1
    end subroutine time_average
 
 
@@ -437,6 +463,8 @@ contains
       if (allocated(T_a)) deallocate(T_a)
       if (allocated(psi_o)) deallocate(psi_o)
       if (allocated(T_o)) deallocate(T_o)
+      if (allocated(field_iau_old)) deallocate(field_iau_old)
+      if (allocated(increments_field)) deallocate(increments_field)
       DEALLOCATE(field, field_new)
       CALL maooam_model%clean
       CALL integr%clean

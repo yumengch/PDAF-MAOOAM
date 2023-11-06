@@ -25,12 +25,14 @@ contains
            ONLY: mype_world, abort_parallel
       USE mod_filteroptions_pdaf, &         ! Variables for assimilation
            ONLY: filtertype
-      use mod_config_pdaf, only: is_strong
-      use mod_statevector_pdaf, only: setField, component, observed_component, step_both
+      use mod_config_pdaf, only: is_strong, do_time_avgs
+      use mod_statevector_pdaf, only: setField, component, observed_component, step_both, distributeObsOnly
       USE mod_U_pdaf, only: collect_state_pdaf, &    ! Collect a state vector from model fields
                             distribute_state_pdaf, &  ! Distribute a state vector to model fields
                             next_observation_pdaf, &  ! Provide time step of next observation
-                            prepoststep_ens_pdaf
+                            prepoststep_ens_pdaf, &
+                            collect_timeavg_state_pdaf, &
+                            distribute_timeavg_state_pdaf
       USE mod_localization_pdaf, only: init_n_domains_pdaf, &  ! Provide number of local analysis domains
                                   init_dim_l_pdaf, & ! Initialize state dimension for local analysis domain
                                   g2l_state_pdaf, &  ! Get state on local analysis domain from global state
@@ -62,10 +64,12 @@ contains
 
       ! Call assimilate routine for global or local filter
       IF (localfilter==1) THEN
-         if (is_strong .and. component== 'b' .and. mod(it, step_both) == 0) then
-             call setField('b')
-         else
-             call setField(observed_component)
+         if (is_strong) then
+            if (component== 'b' .and. mod(it, step_both) == 0) then
+               call setField('b')
+            else
+               call setField(observed_component)
+            end if
          end if
          CALL PDAFomi_assimilate_local(collect_state_pdaf, distribute_state_pdaf, &
               init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, init_n_domains_pdaf, &
@@ -109,11 +113,36 @@ contains
                end if
                call setField('a')
             end if
-            if (is_strong .and. component== 'b' .and. mod(it, step_both) == 0) then
-                call setField('b')
-            else
-                call setField(observed_component)
+            if (is_strong) then
+               if (component== 'b' .and. mod(it, step_both) == 0 .and. .not. distributeObsOnly) then
+                  call setField('b')
+               else
+                  call setField(observed_component)
+               end if
+
+               if (component== 'b' .and. do_time_avgs .and. observed_component == 'a') then
+                  call setField('a')
+                  if (mod(it, step_both) == 0) then
+                     call setField('o')
+                     call set_doassim_pdaf(it)
+                     CALL PDAF_put_state_estkf(collect_timeavg_state_pdaf, init_dim_obs_pdafomi, obs_op_pdafomi, &
+                                             PDAFomi_init_obs_f_cb, prepoststep_ens_pdaf, &
+                                             PDAFomi_prodRinvA_cb, &
+                                             PDAFomi_init_obsvar_cb, status_pdaf)
+
+                     ! *** Prepare start of next ensemble forecast ***
+                     IF (status_pdaf==0) then
+                        CALL PDAF_get_state(steps, time, doexit, next_observation_pdaf, distribute_timeavg_state_pdaf, &
+                        prepoststep_ens_pdaf, status_pdaf)
+                        step_obs = step_obs - nsteps
+                        nsteps = 1
+                     end if
+                     CALL PDAFomi_dealloc()
+                     call setField('a')
+                  end if
+               end if
             end if
+
             call set_doassim_pdaf(it)
             CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
                  init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &

@@ -31,6 +31,7 @@ logical :: distributeObsOnly = .true.
 CHARACTER :: component = 'b'
 CHARACTER :: observed_component = 'b'
 namelist /state_vector_nml/ component, observed_component, step_both, distributeObsOnly
+
 contains
    subroutine initSV(is_strong)
       use mod_model_pdaf, only: nx, ny

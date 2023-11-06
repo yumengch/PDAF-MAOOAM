@@ -203,7 +203,10 @@ contains
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         only: nx, ny, psi_a, T_a, psi_o, T_o, toFourier_A, toFourier_O
+         only: nx, ny, psi_a, T_a, psi_o, T_o, &
+               field_iau_old, increments_field, field, &
+               toFourier_A, toFourier_O, do_iau_ocean, &
+               nudging_steps, natm
       use mod_statevector_pdaf, only: sv_atm, sv_ocean, distributeObsOnly
       USE mod_observations_pdaf, ONLY: n_obs, obs
       USE mod_filteroptions_pdaf, only: filtertype
@@ -240,6 +243,7 @@ contains
       if ((is_strong) .and. (distributeObsOnly) .and. (.not. any(obs(:)%isPoint))) then
          distributeOcean = .false.
          distributeAtmos = .false.
+         if (n_obs == 1) print *, 'warning: distributeObsOnly option is only reasonable for n_obs > 1'
          do i = 1, n_obs
             if (obs(i)%doassim ==1) then
                if (obs(i)%obsvar == 'o') distributeOcean = .true.
@@ -260,11 +264,19 @@ contains
 
       if (distributeOcean) then
          if (mype_world == 0) print *, 'distribute to ocean component'
+
          offset = 0
-         if (sv_atm) offset = 2*nx*ny
+         if (is_strong) offset = 2*nx*ny
          psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
          T_o   = reshape(state_p(offset+nx*ny+1:offset+2*nx*ny), [nx, ny])
+         if (do_iau_ocean) then
+            field_iau_old = field
+         end if
          call toFourier_O(nx, ny)
+         if (do_iau_ocean) then
+            increments_field = field - field_iau_old
+            field(2*natm+1:) = field_iau_old(2*natm+1:) + increments_field(2*natm+1:)/nudging_steps
+         end if
       end if
       call SYSTEM_CLOCK(timer_distr_end, t_rate)
       distr_dur = distr_dur + &
@@ -272,10 +284,59 @@ contains
    END SUBROUTINE distribute_state_pdaf
 
 
+   SUBROUTINE distribute_timeavg_state_pdaf(dim_p, state_p)
+      USE mod_model_pdaf, &             ! Model variables
+         only: nx, ny, psi_a, T_a, psi_o, T_o, &
+               field_iau_old, increments_field, field, &
+               toFourier_A, toFourier_O, do_iau_ocean, &
+               nudging_steps, natm
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean, distributeObsOnly
+      USE mod_observations_pdaf, ONLY: n_obs, obs
+      USE mod_filteroptions_pdaf, only: filtertype
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
+      REAL(wp), INTENT(inout) :: state_p(dim_p)  !< PE-local state vector
+
+      ! local variable
+      integer :: offset
+      integer :: i
+      logical :: distributeOcean, distributeAtmos
+      real(wp) :: psi_a_old(129, 129), T_a_old(129, 129)
+
+      call SYSTEM_CLOCK(timer_distr_start)
+
+      ! *************************************************
+      ! *** Initialize model fields from state vector ***
+      ! *** for process-local model domain            ***
+      !**************************************************
+      if ((firsttime_distribute) .and. (.not. is_freerun)) then
+         if (mype_world == 0) &
+             print *, 'distribute_state_pdaf: starting from restart files'
+         return
+      end if
+
+      if (mype_world == 0) print *, 'distribute to ocean component'
+
+      offset = 2*nx*ny
+      psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
+      T_o   = reshape(state_p(offset+nx*ny+1:offset+2*nx*ny), [nx, ny])
+
+      call toFourier_O(nx, ny)
+
+      call SYSTEM_CLOCK(timer_distr_end, t_rate)
+      distr_dur = distr_dur + &
+        (real(timer_distr_end, wp) - real(timer_distr_start, wp))/real(t_rate, wp)
+   END SUBROUTINE distribute_timeavg_state_pdaf
+
+
    SUBROUTINE collect_state_pdaf(dim_p, state_p)
 
       USE mod_model_pdaf, &             ! Model variables
          ONLY: psi_a, T_a, psi_o, T_o, toPhysical_A, toPhysical_O, nx, ny
+         USE mod_model_pdaf, &             ! Model variables
+         ONLY: psi_a_avg, T_o_avg, T_a_avg, psi_o_avg
       use mod_statevector_pdaf, only: sv_atm, sv_ocean
       IMPLICIT NONE
 
@@ -311,6 +372,36 @@ contains
       collect_dur = collect_dur + &
         (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
    END SUBROUTINE collect_state_pdaf
+
+
+   SUBROUTINE collect_timeavg_state_pdaf(dim_p, state_p)
+         USE mod_model_pdaf, &             ! Model variables
+         ONLY: psi_a_avg, T_o_avg, T_a_avg, psi_o_avg, nx, ny
+      use mod_statevector_pdaf, only: sv_atm, sv_ocean
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
+      REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
+
+      ! local variable
+      integer :: offset
+
+      call SYSTEM_CLOCK(timer_collect_start)
+      ! *************************************************
+      ! *** Initialize state vector from model fields ***
+      ! *** for process-local model domain            ***
+      ! *************************************************
+      state_p = 0.
+      state_p(:nx*ny) = reshape(psi_a_avg, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_a_avg, [nx*ny])
+      offset = 2*nx*ny
+      state_p(offset+1:offset+nx*ny) = reshape(psi_o_avg, [nx*ny])
+      state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o_avg, [nx*ny])
+      call SYSTEM_CLOCK(timer_collect_end, t_rate)
+      collect_dur = collect_dur + &
+         (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
+   END SUBROUTINE collect_timeavg_state_pdaf
 
 
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
