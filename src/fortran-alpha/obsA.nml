@@ -1,0 +1,12 @@
+&setup_nml
+filename = 'obs-50.nc'
+filename_var = 'traj_var.nc'
+doassim = 1
+delt_obs = 90 
+file_timestep = 90
+rms_obs = 0.25
+obs_den = 8
+obsvar = 'a'
+file_timecount = 0
+/
+

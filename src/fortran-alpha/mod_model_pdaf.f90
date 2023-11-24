@@ -37,12 +37,16 @@ real(wp), parameter   :: pi =  3.14159265358979323846
 real(wp), allocatable :: field(:)
 real(wp), allocatable :: field_new(:)
 
-real(wp), allocatable :: psi_a(:, :)
-real(wp), allocatable :: T_a(:, :)
-real(wp), allocatable :: psi_o(:, :)
-real(wp), allocatable :: T_o(:, :)
+real(wp), allocatable :: psi_a_f(:, :)
+real(wp), allocatable :: T_a_f(:, :)
+real(wp), allocatable :: psi_o_f(:, :)
+real(wp), allocatable :: T_o_f(:, :)
 
-logical :: shift_state
+real(wp), allocatable :: psi_a_a(:, :)
+real(wp), allocatable :: T_a_a(:, :)
+real(wp), allocatable :: psi_o_a(:, :)
+real(wp), allocatable :: T_o_a(:, :)
+
 logical :: writeout
 logical :: ln_restart
 integer :: restart_it
@@ -52,7 +56,7 @@ real(wp) :: ensscale(4)
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it, tw, ensscale
+namelist /model_nml/ nx, ny, ln_restart, restart_it, tw
 
 contains
    !> init model
@@ -80,10 +84,15 @@ contains
       writeout = maooam_model%model_configuration%integration%writeout
 
       ! init fields in physical space
-      if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
-      if (.not. allocated(T_a)) allocate(T_a(nx, ny))
-      if (.not. allocated(psi_o)) allocate(psi_o(nx, ny))
-      if (.not. allocated(T_o)) allocate(T_o(nx, ny))
+      if (.not. allocated(psi_a_f)) allocate(psi_a_f(nx, ny))
+      if (.not. allocated(T_a_f)) allocate(T_a_f(nx, ny))
+      if (.not. allocated(psi_o_f)) allocate(psi_o_f(nx, ny))
+      if (.not. allocated(T_o_f)) allocate(T_o_f(nx, ny))
+
+      if (.not. allocated(psi_a_a)) allocate(psi_a_a(nx, ny))
+      if (.not. allocated(T_a_a)) allocate(T_a_a(nx, ny))
+      if (.not. allocated(psi_o_a)) allocate(psi_o_a(nx, ny))
+      if (.not. allocated(T_o_a)) allocate(T_o_a(nx, ny))
 
       ! initialise initial condition
       ALLOCATE(field(0:ndim),field_new(0:ndim))
@@ -199,8 +208,8 @@ contains
       dy = pi/(ny - 1)
 
       ! get atmospheric components
-      psi_a = 0.
-      T_a = 0.
+      psi_a_f = 0.
+      T_a_f = 0.
       do k = 1, natm
          H = maooam_model%inner_products%awavenum(k)%H
          M = maooam_model%inner_products%awavenum(k)%M
@@ -209,22 +218,22 @@ contains
          if (typ == "A") then
             do j = 1, ny
                do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fa(P, (j-1)*dy)
-                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fa(P, (j-1)*dy)
+                  psi_a_f(i, j) = psi_a_f(i, j) + field(k)       *Fa(P, (j-1)*dy)
+                  T_a_f(i, j)   = T_a_f(i, j)   + field(k + natm)*Fa(P, (j-1)*dy)
                enddo
             enddo
          else if (typ == "K") then
             do j = 1, ny
                do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fk(M, P, (i-1)*dx, (j-1)*dy)
-                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fk(M, P, (i-1)*dx, (j-1)*dy)
+                  psi_a_f(i, j) = psi_a_f(i, j) + field(k)       *Fk(M, P, (i-1)*dx, (j-1)*dy)
+                  T_a_f(i, j)   = T_a_f(i, j)   + field(k + natm)*Fk(M, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
          else if (typ == "L") then
             do j = 1, ny
                do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + field(k)       *Fl(H, P, (i-1)*dx, (j-1)*dy)
-                  T_a(i, j)   = T_a(i, j)   + field(k + natm)*Fl(H, P, (i-1)*dx, (j-1)*dy)
+                  psi_a_f(i, j) = psi_a_f(i, j) + field(k)       *Fl(H, P, (i-1)*dx, (j-1)*dy)
+                  T_a_f(i, j)   = T_a_f(i, j)   + field(k + natm)*Fl(H, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
          else
@@ -232,6 +241,8 @@ contains
             stop
          end if
       end do
+      psi_a_a = psi_a_f
+      T_a_a = T_a_f
    end subroutine toPhysical_A
 
 
@@ -246,18 +257,20 @@ contains
       dy = pi/(ny - 1)
 
       ! get ocean components
-      psi_o = 0.
-      T_o = 0.
+      psi_o_f = 0.
+      T_o_f = 0.
       do k = 1, noc
          H = maooam_model%inner_products%owavenum(k)%H
          P = maooam_model%inner_products%owavenum(k)%P
          do j = 1, ny
             do i = 1, nx
-               psi_o(i, j) = psi_o(i, j) + field(k + 2*natm)*phi(H, P, (i-1)*dx, (j-1)*dy)
-               T_o(i, j) = T_o(i, j) + field(k + 2*natm + noc)*phi(H, P, (i-1)*dx, (j-1)*dy)
+               psi_o_f(i, j) = psi_o_f(i, j) + field(k + 2*natm)*phi(H, P, (i-1)*dx, (j-1)*dy)
+               T_o_f(i, j) = T_o_f(i, j) + field(k + 2*natm + noc)*phi(H, P, (i-1)*dx, (j-1)*dy)
             enddo
          enddo
       end do
+      psi_o_a = psi_o_f
+      T_o_a = T_o_f
    end subroutine toPhysical_O
 
 
@@ -290,7 +303,7 @@ contains
          if (typ == "A") then
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = psi_a(i, j)*Fa(P, (j-1)*dy)
+                  integrand(i, j) = psi_a_a(i, j)*Fa(P, (j-1)*dy)
                enddo
             enddo
 
@@ -301,13 +314,13 @@ contains
 
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = T_a(i, j)  *Fa(P, (j-1)*dy)
+                  integrand(i, j) = T_a_a(i, j)  *Fa(P, (j-1)*dy)
                enddo
             enddo
          else if (typ == "K") then
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = psi_a(i, j)*Fk(M, P, (i-1)*dx, (j-1)*dy)
+                  integrand(i, j) = psi_a_a(i, j)*Fk(M, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
 
@@ -318,13 +331,13 @@ contains
 
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = T_a(i, j)  *Fk(M, P, (i-1)*dx, (j-1)*dy)
+                  integrand(i, j) = T_a_a(i, j)  *Fk(M, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
          else if (typ == "L") then
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = psi_a(i, j)*Fl(H, P, (i-1)*dx, (j-1)*dy)
+                  integrand(i, j) = psi_a_a(i, j)*Fl(H, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
 
@@ -335,7 +348,7 @@ contains
 
             do j = 1, ny
                do i = 1, nx
-                  integrand(i, j) = T_a(i, j)  *Fl(H, P, (i-1)*dx, (j-1)*dy)
+                  integrand(i, j) = T_a_a(i, j)  *Fl(H, P, (i-1)*dx, (j-1)*dy)
                enddo
             enddo
          else
@@ -380,7 +393,7 @@ contains
 
          do j = 1, ny
             do i = 1, nx
-               integrand(i, j) = psi_o(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
+               integrand(i, j) = psi_o_a(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
             enddo
          enddo
          do j = 1, nx
@@ -390,7 +403,7 @@ contains
 
          do j = 1, ny
             do i = 1, nx
-               integrand(i, j) = T_o(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
+               integrand(i, j) = T_o_a(i, j)*phi(H, P, (i-1)*dx, (j-1)*dy)
             enddo
          enddo
 
@@ -404,10 +417,16 @@ contains
 
 
    subroutine finalize_model
-      if (allocated(psi_a)) deallocate(psi_a)
-      if (allocated(T_a)) deallocate(T_a)
-      if (allocated(psi_o)) deallocate(psi_o)
-      if (allocated(T_o)) deallocate(T_o)
+      if (allocated(psi_a_f)) deallocate(psi_a_f)
+      if (allocated(T_a_f)) deallocate(T_a_f)
+      if (allocated(psi_o_f)) deallocate(psi_o_f)
+      if (allocated(T_o_f)) deallocate(T_o_f)
+
+      if (allocated(psi_a_a)) deallocate(psi_a_a)
+      if (allocated(T_a_a)) deallocate(T_a_a)
+      if (allocated(psi_o_a)) deallocate(psi_o_a)
+      if (allocated(T_o_a)) deallocate(T_o_a)
+
       DEALLOCATE(field, field_new)
       CALL maooam_model%clean
       CALL integr%clean

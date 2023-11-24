@@ -20,15 +20,14 @@ contains
       USE PDAF_mod_filter,ONLY: cnt_steps, step_obs, nsteps
       USE pdaf_interfaces_module, &   ! Interface definitions to PDAF core routines
            ONLY: PDAFomi_assimilate_local, PDAFomi_assimilate_global, &
-           PDAFomi_assimilate_lenkf
+           PDAFomi_assimilate_lenkf, PDAF_get_localfilter
       USE mod_parallel_pdaf, &       ! Parallelization
            ONLY: mype_world, abort_parallel
       USE mod_filteroptions_pdaf, &         ! Variables for assimilation
            ONLY: filtertype
-      use mod_config_pdaf, only: is_strong
-      use mod_statevector_pdaf, only: setField, component, observed_component, step_both, distributeObsOnly
       USE mod_U_pdaf, only: collect_state_pdaf, &    ! Collect a state vector from model fields
                             distribute_state_pdaf, &  ! Distribute a state vector to model fields
+                            ! distribute_atmospherestate_pdaf, &  ! Distribute a state vector to model fields
                             next_observation_pdaf, &  ! Provide time step of next observation
                             prepoststep_ens_pdaf
       USE mod_localization_pdaf, only: init_n_domains_pdaf, &  ! Provide number of local analysis domains
@@ -38,71 +37,44 @@ contains
       USE mod_U_PDAFomi_pdaf, only: init_dim_obs_pdafomi, & ! Get dimension of full obs. vector for PE-local domain
                              obs_op_pdafomi, &         ! Obs. operator for full obs. vector for PE-local domain
                              init_dim_obs_l_pdafomi, & ! Get dimension of obs. vector for local analysis domain
-                             localize_covar_pdafomi, & ! Apply localization to covariance matrix in LEnKF
-                             init_dim_obs_gen_pdafomi, &
-                             get_obs_f
-      use mod_observations_pdaf, only: obs, set_doassim_pdaf
+                             localize_covar_pdafomi    ! Apply localization to covariance matrix in LEnKF
+      use mod_statevector_pdaf, only: update_ocean
+
       IMPLICIT NONE
       integer, intent(in) :: it
       ! *** Local variables ***
       INTEGER :: status_pdaf          ! PDAF status flag
       integer :: steps, time, doexit
-      integer :: iobs(1)
+      INTEGER :: localfilter          ! Flag for domain-localized filter (1=true)
       EXTERNAL :: PDAFomi_init_obs_f_cb, & ! Initialize observation vector
       PDAFomi_init_obsvar_cb, &       ! Initialize mean observation error variance
       PDAFomi_prodRinvA_cb        ! Provide product R^-1 A
-
       ! *********************************
       ! *** Call assimilation routine ***
       ! *********************************
-      ! Call assimilate routine for global or local filter
-      if (filtertype == 100) then
-         ! generate observations
-         call PDAFomi_generate_obs(collect_state_pdaf, &
-                                      distribute_state_pdaf, &
-                                      init_dim_obs_gen_pdafomi, &
-                                      obs_op_pdafomi, &
-                                      get_obs_f, &
-                                      prepoststep_ens_pdaf, &
-                                      next_observation_pdaf, status_pdaf)
-      ELSE
-         ! All global filters, except LEnKF
-         if ((.not. is_strong) .and. (cnt_steps + 1 == nsteps) .and. (component == 'b')) then
-            call setField('o')
-            iobs = findloc(obs(:)%obsvar, 'o')
-            call set_doassim_pdaf(it)
-            if (mod(step_obs, obs(iobs(1))%delt_obs) == 0) then
-               CALL PDAF_put_state_etkf(collect_state_pdaf, init_dim_obs_pdafomi, obs_op_pdafomi, &
-                                       PDAFomi_init_obs_f_cb, prepoststep_ens_pdaf, &
-                                       PDAFomi_prodRinvA_cb, &
-                                       PDAFomi_init_obsvar_cb, status_pdaf)
 
-               ! *** Prepare start of next ensemble forecast ***
-               IF (status_pdaf==0) then
-                  CALL PDAF_get_state(steps, time, doexit, next_observation_pdaf, distribute_state_pdaf, &
-                  prepoststep_ens_pdaf, status_pdaf)
-                  step_obs = step_obs - nsteps
-                  nsteps = 1
-               end if
-               CALL PDAFomi_dealloc()
-            end if
-            call setField('a')
-         end if
-         if (is_strong) then
-            if (component== 'b' .and. mod(it, step_both) == 0 .and. .not. distributeObsOnly) then
-               call setField('b')
-            else
-               call setField(observed_component)
-            end if
-         end if
+      ! Check  whether the filter is domain-localized
+      CALL PDAF_get_localfilter(localfilter)
 
-         call set_doassim_pdaf(it)
-         CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
-              init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &
-              next_observation_pdaf, status_pdaf)
+      ! ! Call assimilate routine for global or local filter
+      ! if (update_ocean .and. cnt_steps + 1 == nsteps) then
+      !       CALL PDAF_put_state_estkf(collect_state_pdaf, init_dim_obs_pdafomi, obs_op_pdafomi, &
+      !                               PDAFomi_init_obs_f_cb, prepoststep_ens_pdaf, &
+      !                               PDAFomi_prodRinvA_cb, &
+      !                               PDAFomi_init_obsvar_cb, status_pdaf)
 
-      END IF
-
+      !       ! *** Prepare start of next ensemble forecast ***
+      !       IF (status_pdaf==0) then
+      !          CALL PDAF_get_state(steps, time, doexit, next_observation_pdaf, distribute_oceanstate_pdaf, &
+      !          prepoststep_ens_pdaf, status_pdaf)
+      !          step_obs = step_obs - nsteps
+      !          nsteps = 1
+      !       end if
+      !       CALL PDAFomi_dealloc()
+      ! end if
+      CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
+           init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &
+           next_observation_pdaf, status_pdaf)
       ! Check for errors during execution of PDAF
 
       IF (status_pdaf /= 0) THEN

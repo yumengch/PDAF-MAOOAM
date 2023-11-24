@@ -42,7 +42,6 @@ real(wp), allocatable :: T_a(:, :)
 real(wp), allocatable :: psi_o(:, :)
 real(wp), allocatable :: T_o(:, :)
 
-logical :: shift_state
 logical :: writeout
 logical :: ln_restart
 integer :: restart_it
@@ -52,7 +51,7 @@ real(wp) :: ensscale(4)
 type(Model), TARGET :: maooam_model
 type(RK4Integrator) :: integr
 
-namelist /model_nml/ nx, ny, ln_restart, restart_it, tw, ensscale
+namelist /model_nml/ nx, ny, ln_restart, restart_it, tw
 
 contains
    !> init model

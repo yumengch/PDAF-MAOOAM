@@ -24,7 +24,6 @@
 !!
 module mod_U_pdaf
 use mod_kind_pdaf, only: wp
-use mod_config_pdaf, only: is_freerun, is_strong
 USE mod_parallel_pdaf, ONLY: mype_world
 implicit none
 
@@ -35,21 +34,11 @@ integer :: timer_distr_start, timer_distr_end
 integer :: timer_next_start, timer_next_end
 integer :: timer_prepost_start, timer_prepost_end
 real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
-real(wp), allocatable :: initial_ens_p(:, :)
-integer  :: step_pdaf = 0
+real(wp), ALLOCATABLE :: state_p_background(:)
+real(wp), ALLOCATABLE  :: increment(:), anomaly(:, :)
+real(wp), ALLOCATABLE  :: new_anomaly(:, :)
 contains
    subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
-      use netcdf
-      USE mod_model_pdaf, &             ! Model variables
-         ONLY: nx, ny, &
-               psi_a, T_a, psi_o, T_o, &
-               toPhysical_A, toPhysical_O, &
-               ensscale, read_restart, field, natm, noc, restart_it, &
-               shift_state
-      use mod_nfcheck_pdaf, only: check
-      use pdaf_interfaces_module, only: PDAF_sampleens
-      use mod_statevector_pdaf, only: sv_atm, sv_ocean
-      use mod_parallel_pdaf, only: task_id
       implicit none
       ! type of filter to initialize
       integer, intent(in) :: filtertype
@@ -66,94 +55,12 @@ contains
       ! pdaf status flag
       integer, intent(inout) :: status_pdaf
 
-      ! local variables
-      integer :: ncid, dimid, varid
-      integer :: i, j
-      integer :: rank
-      integer :: offset
-      real(wp), allocatable :: eofV(:, :)
-      real(wp), allocatable :: svals(:)
-      real(wp), allocatable :: std(:)
-      character(len=5) :: varname(4)
-      character(len=3)  :: ens_id_str
-
-      ! convert to physical space
-      if (.not. is_freerun) then
-         ens_p = 0.
-         return
-      end if
-
-      varname = [character(len=5) :: 'psi_a', 'T_a', 'psi_o', 'T_o']
-      call check( nf90_open('covariance.nc', nf90_nowrite, ncid) )
-
-      allocate(svals(dim_ens - 1))
-      call check( nf90_inq_varid(ncid, 'sigma', varid) )
-      call check( nf90_get_var(ncid, varid, svals, start=[1], count=[dim_ens - 1]) )
-
-      allocate(eofV(dim_p, dim_ens - 1))
-
-
-      call toPhysical_A()
-      call toPhysical_O()
-      state_p(:nx*ny) = reshape(psi_a, [nx*ny])
-      state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
-      state_p(2*nx*ny+1:3*nx*ny) = reshape(psi_o, [nx*ny])
-      state_p(3*nx*ny+1:4*nx*ny) = reshape(T_o, [nx*ny])
-
-      if (dim_ens > 1) then
-         do j = 1, dim_ens - 1
-            do i = 1, 4
-               call check( nf90_inq_varid(ncid, trim(varname(i))//'_svd', varid) )
-               call check( nf90_get_var(ncid, varid, eofV((i-1)*nx*ny+1:i*nx*ny, j), start=[1, 1, j], count=[nx, ny, 1]) )
-            end do
-         end do
-         ens_p = 0.
-         call PDAF_sampleens(dim_p, dim_ens, eofV, svals, state_p, ens_p, verbose=1, flag=status_pdaf)
-         ! get ensemble mean
-         state_p = 0.
-         do j = 1, dim_ens
-            state_p = state_p + ens_p(:, j)/dim_ens
-         end do
-
-         ! get inflate ensemble spread
-         do i = 0, 3
-            print *, 'The ensscale of the ', i+1, '-th variable', ensscale(i+1)
-            do j = 1, dim_ens
-               ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) = ensscale(i+1)*(ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) - &
-                                                                  state_p(1 + i*nx*ny:(i+1)*nx*ny)) &
-                                                   + state_p(1 + i*nx*ny:(i+1)*nx*ny)
-            end do
-         enddo
-
-         if (shift_state) then
-            print *, 'add initial error of the ensemble mean based on spread'
-            allocate(std(dim_p))
-            std = 0._wp
-            do i = 0, 3
-               do j = 1, dim_ens
-                  std(1 + i*nx*ny:(i+1)*nx*ny) = std(1 + i*nx*ny:(i+1)*nx*ny) + &
-                                (ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) - state_p(1 + i*nx*ny:(i+1)*nx*ny))* &
-                                (ens_p(1 + i*nx*ny:(i+1)*nx*ny, j) - state_p(1 + i*nx*ny:(i+1)*nx*ny))
-               end do
-            enddo
-            std = sqrt(std/(dim_ens - 1))
-            do j = 1, dim_ens
-               ens_p(:, j) = ens_p(:, j) + std 
-            end do
-            DEALLOCATE(std)
-         end if
-      else
-         ens_p(:, 1) = state_p
-      end if
-
-      call check( nf90_close(ncid) )
-      deallocate(eofV, svals)
+      ens_p = 0.
    end subroutine init_ens_pdaf
 
    SUBROUTINE next_observation_pdaf(stepnow, nsteps, doexit, time)
       USE mod_model_pdaf, ONLY: total_steps
       USE mod_observations_pdaf, ONLY: obs
-      use mod_statevector_pdaf, only: component, sv_atm, sv_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -191,11 +98,9 @@ contains
    !!
    SUBROUTINE distribute_state_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         only: nx, ny, psi_a, T_a, psi_o, T_o, &
-               field, toFourier_A, toFourier_O, natm
-      use mod_statevector_pdaf, only: sv_atm, sv_ocean, distributeObsOnly
-      USE mod_observations_pdaf, ONLY: n_obs, obs
-      USE mod_filteroptions_pdaf, only: filtertype
+         only: nx, ny, psi_a, T_a, psi_o, T_o,&
+               field, toFourier_A, toFourier_O
+      use mod_statevector_pdaf, only: update_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -204,9 +109,6 @@ contains
 
       ! local variable
       integer :: offset
-      integer :: i
-      logical :: distributeOcean, distributeAtmos
-      real(wp) :: psi_a_old(129, 129), T_a_old(129, 129)
 
       call SYSTEM_CLOCK(timer_distr_start)
 
@@ -214,42 +116,22 @@ contains
       ! *** Initialize model fields from state vector ***
       ! *** for process-local model domain            ***
       !**************************************************
-      if ((firsttime_distribute) .and. (.not. is_freerun)) then
+      if (firsttime_distribute) then
          if (mype_world == 0) &
              print *, 'distribute_state_pdaf: starting from restart files'
          firsttime_distribute = .false.
          return
       end if
 
-      if (filtertype == 100) return
+      if (mype_world == 0) print *, 'distribute to atmosphere component'
+      psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
+      T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
+      call toFourier_A(nx, ny)
 
-      distributeOcean = sv_ocean
-      distributeAtmos = sv_atm
-      if (mype_world == 0) print *, 'sv_ocean', sv_ocean, 'sv_atm', sv_atm
-      if ((is_strong) .and. (distributeObsOnly) .and. (.not. any(obs(:)%isPoint))) then
-         distributeOcean = .false.
-         distributeAtmos = .false.
-         if (n_obs == 1) print *, 'warning: distributeObsOnly option is only reasonable for n_obs > 1'
-         do i = 1, n_obs
-            if (obs(i)%doassim ==1) then
-               if (obs(i)%obsvar == 'o') distributeOcean = .true.
-               if (obs(i)%obsvar == 'a') distributeAtmos = .true.
-            end if
-         end do
-      end if
-
-      if (distributeAtmos) then
-         if (mype_world == 0) print *, 'distribute to atmosphere component'
-         psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
-         T_a   = reshape(state_p(nx*ny+1:2*nx*ny)  , [nx, ny])
-         call toFourier_A(nx, ny)
-      end if
-
-      if (distributeOcean) then
+      if (update_ocean) then
          if (mype_world == 0) print *, 'distribute to ocean component'
-         offset = 0
-         if (is_strong) offset = 2*nx*ny
-         psi_o = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
+         offset = 2*nx*ny
+         psi_o   = reshape(state_p(offset+1:offset+nx*ny), [nx, ny])
          T_o   = reshape(state_p(offset+nx*ny+1:offset+2*nx*ny), [nx, ny])
          call toFourier_O(nx, ny)
       end if
@@ -263,7 +145,6 @@ contains
 
       USE mod_model_pdaf, &             ! Model variables
          ONLY: psi_a, T_a, psi_o, T_o, toPhysical_A, toPhysical_O, nx, ny
-      use mod_statevector_pdaf, only: sv_atm, sv_ocean
       IMPLICIT NONE
 
       ! *** Arguments ***
@@ -279,21 +160,15 @@ contains
       ! *** for process-local model domain            ***
       ! *************************************************
       state_p = 0.
-      if (is_strong .or. sv_atm) then
-         if (mype_world == 0) print *, 'collect atmosphere'
-         call toPhysical_A()
-         state_p(:nx*ny) = reshape(psi_a, [nx*ny])
-         state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
-      endif
+      call toPhysical_A()
+      state_p(:nx*ny) = reshape(psi_a, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_a, [nx*ny])
 
-      if (is_strong .or. sv_ocean) then
-         call toPhysical_O()
-         offset = 0
-         if ((is_strong) .or. (sv_atm)) offset = 2*nx*ny
-         if (mype_world == 0) print *, 'collect ocean', offset
-         state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
-         state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
-      endif
+      call toPhysical_O()
+      offset = 2*nx*ny
+      state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
+      state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
+
       call SYSTEM_CLOCK(timer_collect_end, t_rate)
       collect_dur = collect_dur + &
         (real(timer_collect_end, wp) - real(timer_collect_start, wp))/real(t_rate, wp)
@@ -307,6 +182,9 @@ contains
       use mod_model_pdaf, only: nx, ny, integr
       use mod_statevector_pdaf, only: dim_state_p
       use mod_StateWriter_pdaf, only: write_state
+      use mod_statevector_pdaf, only: update_ocean
+      use PDAF_saveVar, only: YRY
+      use mod_inflation_pdaf, only: forget
       include 'mpif.h'
 
       INTEGER, INTENT(in) :: step        !< Current time step (negative for call after forecast)
@@ -324,16 +202,29 @@ contains
       real(wp) :: variance_p(dim_p)
       real(wp) :: variance(dim_p)
       real(wp) :: inv_dim_ens, inv_dim_ens1, rmserror_est
-      integer :: off_p
+      
       integer :: i
+
+
+      real(wp) :: alpha = 0.05, trace
+
+      integer :: col, row
+      INTEGER :: lib_info                ! Status flag for LAPACK calls
+      INTEGER :: ldwork                  ! Size of work array for syevTYPE
+      REAL(wp), ALLOCATABLE :: svals(:)      ! Singular values of Ainv
+      REAL(wp), ALLOCATABLE :: work(:)       ! Work array for SYEVTYPE
+      REAL(wp), ALLOCATABLE :: Asqrt(:, :)
+      REAL(KIND=wp), ALLOCATABLE :: inflation(:, :)
 
       call SYSTEM_CLOCK(timer_prepost_start)
       ! pre- and post-processing of ensemble
       if (firsttime) then
          print *, 'Analyze initial state ensemble'
+         ALLOCATE(state_p_background(dim_p), increment(dim_p), anomaly(dim_p, dim_ens), new_anomaly(dim_p, dim_ens))
       else
          if (step < 0) then
             print *, 'Analyze forecasted state ensemble'
+            if (.not. allocated(YRY)) ALLOCATe(YRY(dim_ens, dim_ens))
          else
             print *, 'Analyze assimilated state ensemble'
          endif
@@ -359,33 +250,64 @@ contains
          variance_p = variance_p + (ens_p(:, i) - state_p)*(ens_p(:, i) - state_p)
       end do
       variance_p = variance_p*inv_dim_ens1
-
       variance(:dim_p) = variance_p
-      if (mype_filter /= 0) then
-         call mpi_send(variance_p, dim_p, MPI_DOUBLE_PRECISION, 0, &
-                       mype_filter, COMM_filter, MPIerr)
-      else
-         variance(:dim_p) = variance_p
-
-         off_p = 0
-         do i = 2, npes_filter
-            off_p = off_p + dim_p
-            CALL MPI_recv(variance(1 + off_p: 1 + off_p + dim_p), dim_p,  MPI_DOUBLE_PRECISION, i - 1, &
-                          i - 1, COMM_filter, MPIstatus, MPIerr)
-         end do
-      endif
-
       rmserror_est = sqrt(sum(variance)/dim_state_p)
 
-      if (mype_filter == 0) print*, 'RMS error: ', rmserror_est
+      ! adjut ocean update
+      if (update_ocean) then
+         do i = 1, dim_ens
+            anomaly(:, i) = ens_p(:, i) - state_p
+         end do
 
-      ! if (step <= 0) then
-      !    print *, '---writing ensemble forecast---'
-      !    call write_state(-step*integr%dt, 'f', ens_p, nx, ny, dim_ens)
-      ! else
-      !    print *, '---writing ensemble analysis---'
-      !    call write_state(step*integr%dt, 'a', ens_p, nx, ny, dim_ens)
-      ! endif
+         if (step < 0) then
+            state_p_background = state_p
+            print *, 'step <0', sqrt(sum(variance(2*nx*ny + 1:))/dim_state_p)
+         else if (step > 0) then
+            ! adjust mean
+            increment = state_p - state_p_background
+            state_p(2*nx*ny + 1:) =  state_p_background(2*nx*ny + 1:) + alpha*sqrt(forget)*increment(2*nx*ny + 1:)
+            ! adjust ensemble spread
+            ALLOCATE(svals(dim_ens))
+            ALLOCATE(work(3 * dim_ens))
+            ALLOCATE(Asqrt(dim_ens, dim_ens))
+            ALLOCATE(inflation(dim_ens, dim_ens))
+            ldwork = 3 * dim_ens
+            ! do svd decomposition to compute (I + 1./(forgetting_factor/dim_ens -1)*(1 - alpha**2)*Y.TR^-1Y)^1/2
+            YRY = YRY*(1. - alpha*alpha/forget)/(dim_ens -1)
+            CALL dsyev('V', 'L', dim_ens, YRY, dim_ens, svals, work, ldwork, lib_info)
+            svals = sqrt(forget + svals)
+            print *, 'transformed svals', svals
+              DO col = 1, dim_ens
+                 DO row = 1, dim_ens
+                    Asqrt(row, col) = YRY(row, col) * svals(col)
+                 END DO
+              END DO
+            inflation = MATMUL(Asqrt, TRANSPOSE(YRY))
+            ! the resulting matrix inflation is the inflation matrix of the ensemble new_anomaly
+            new_anomaly = MATMUL(anomaly, inflation)
+            trace = 0.
+            do i = 1, dim_ens
+               trace = trace + inflation(i, i)
+               ens_p(2*nx*ny + 1:, i) = state_p(2*nx*ny + 1:) + new_anomaly(2*nx*ny + 1:, i)
+            end do
+
+            ! ensemble variance
+            variance_p = 0._wp
+            do i = 1, dim_ens
+               variance_p = variance_p + (ens_p(:, i) - state_p)*(ens_p(:, i) - state_p)
+            end do
+            variance_p = variance_p*inv_dim_ens1
+            variance(:dim_p) = variance_p
+            rmserror_est = sqrt(sum(variance)/dim_state_p)
+            print *, trace
+            print *, 'step >0', sqrt(sum(variance(2*nx*ny + 1:))/dim_state_p)
+            DEALLOCATE(svals, work, Asqrt, inflation)
+         end if
+      end if
+
+      if (mype_filter == 0) then
+         print*, 'RMS error: ', rmserror_est
+      end if
 
       firsttime = .false.
       call SYSTEM_CLOCK(timer_prepost_end, t_rate)

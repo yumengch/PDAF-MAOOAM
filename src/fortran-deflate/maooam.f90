@@ -1,17 +1,17 @@
 PROGRAM maooam_pdaf
    use mod_kind_pdaf, only: wp
-   use mod_config_pdaf, only: screen, is_freerun, is_strong, read_namelist
+   use mod_config_pdaf, only: screen, read_namelist
    use mod_parallel_pdaf, only: initialize_parallel_pdaf, mype_world, &
                                 init_parallel_pdaf, finalize_parallel_pdaf
-   use mod_statevector_pdaf, only: component, setField
    use mod_model_pdaf, only: initialize_model, &
                              natm, noc, &
                              finalize_model, total_steps, &
                              writeout, tw, restart_it,&
-                             integr, field, field_new, current_time
+                             integr, field, field_new, &
+                             current_time
    use mod_observations_pdaf, only: initObs => init
    use mod_FilterOptions_pdaf, only: filtertype
-   use mod_statevector_pdaf, only: initSV
+   use mod_statevector_pdaf, only: initSV, update_ocean
    use mod_obswriter_pdaf, only: init_obs_writer
    use mod_init_pdaf, only: init_pdaf, finalize_pdaf
    use mod_ModelWriter_pdaf, only: write_model
@@ -35,7 +35,7 @@ PROGRAM maooam_pdaf
    ! initialise model
    call initialize_model()
    ! initialise state vector
-   call initSV(is_strong)
+   call initSV()
    ! initialise observations
    call initObs()
    if (filtertype == 100) call init_obs_writer()
@@ -65,7 +65,6 @@ PROGRAM maooam_pdaf
       call SYSTEM_CLOCK(timer_model_start)
       CALL integr%step(field, t, field_new)
       field = field_new
-
       call SYSTEM_CLOCK(timer_model_end, t_rate)
       timer_model_dur = timer_model_dur + &
          (real(timer_model_end, wp) - real(timer_model_start, wp))/real(t_rate, wp)
@@ -75,10 +74,11 @@ PROGRAM maooam_pdaf
          if (mype_world == 0) print *, 'f', it
          call write_model(t, 'f', field(1:), natm, noc)
       end if
-
       ! do assimilation
       call SYSTEM_CLOCK(timer_PDAF_start)
-      if (.not. is_freerun) call assimilate_pdaf(it)
+      if (mod(it, 630) < 1e-6) update_ocean = .true.
+      call assimilate_pdaf(it)
+      update_ocean = .false.
       call SYSTEM_CLOCK(timer_PDAF_end, t_rate)
       timer_pdaf_dur = timer_pdaf_dur + &
          (real(timer_pdaf_end, wp) - real(timer_pdaf_start, wp))/real(t_rate, wp)

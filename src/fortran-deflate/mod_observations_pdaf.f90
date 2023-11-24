@@ -191,7 +191,6 @@ contains
    subroutine init_dim_obs(i_obs, step, dim_obs)
       use mod_model_pdaf, only: nx, ny, pi, maooam_model
       use PDAFomi, only: PDAFomi_gather_obs
-      use mod_config_pdaf, only: is_strong
 
       integer, intent(in)  :: i_obs
       integer, intent(in)  :: step
@@ -210,21 +209,7 @@ contains
       real(wp), allocatable :: ivar_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-      if (obs(i_obs)%doassim == 0) then
-         dim_obs =0
-         dim_obs_p = 0
-
-         allocate(obs_p(1))
-         allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, 1))
-         allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, 1))
-         allocate(ivar_obs_p(1))
-         CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
-                                    obs(i_obs)%thisobs%ncoord, local(i_obs)%local_range, dim_obs)
-         deallocate(obs_p, ocoord_p, ivar_obs_p)
-         return
-      end if
-
-      
+      print *, 'assimilate ', obs(i_obs)%obsvar, ' component'
       nvar = 2
 
       call get_obs_field(i_obs)
@@ -232,7 +217,6 @@ contains
       call get_var_obs(i_obs)
 
       offset = 0
-      if ((obs(i_obs)%obsvar == 'o') .and. (is_strong)) offset = 2*nx*ny
 
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)
@@ -258,7 +242,6 @@ contains
       ! Initialize vector of observations on the process sub-domain
       ! Initialize coordinate array of observations
       ! on the process sub-domain
-      print *, 'assimilate ', obs(i_obs)%obsvar, ' component', offset
       if (dim_obs_p > 0) then
          allocate(obs_p(dim_obs_p))
          allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, dim_obs_p))
@@ -299,159 +282,6 @@ contains
 
       deallocate(obs_p, ocoord_p, ivar_obs_p)
    end subroutine init_dim_obs
-
-   subroutine init_dim_obs_point(i_obs, step, dim_obs)
-      use mod_model_pdaf, only: nx, ny, pi, maooam_model
-      use PDAFomi, only: PDAFomi_gather_obs
-      use mod_config_pdaf, only: is_strong
-
-      integer, intent(in)  :: i_obs
-      integer, intent(in)  :: step
-      integer, intent(out) :: dim_obs
-
-      integer  :: i, j, k
-      integer  :: cnt
-      integer  :: offset
-      integer  :: dim_obs_p
-      integer  :: nvar, nxo, nyo
-
-      real(wp) :: n
-      real(wp) :: dx, dy
-
-      real(wp), allocatable :: obs_p(:)
-      real(wp), allocatable :: ivar_obs_p(:)
-      real(wp), allocatable :: ocoord_p(:, :)
-
-      if (obs(i_obs)%doassim == 0) then
-         dim_obs =0
-         dim_obs_p = 0
-         return
-      end if
-
-      print *,'assimilate point', obs(i_obs)%obsvar, ' component'
-      nvar = 2
-
-      call get_obs_field(i_obs)
-      ! read observation variance
-      call get_var_obs(i_obs)
-
-      offset = 0
-      if ((obs(i_obs)%obsvar == 'o') .and. (is_strong)) offset = 1
-
-      n = maooam_model%model_configuration%physics%n
-      dx = 2*pi/n/(nx - 1)
-      dy = pi/(ny - 1)
-      nxo = nx/obs(i_obs)%obs_den + 1
-      nyo = ny/obs(i_obs)%obs_den + 1
-
-      ! count valid observations
-      dim_obs_p = 1
-      obs(i_obs)%dim_obs = 1
-
-      ! Initialize vector of observations on the process sub-domain
-      ! Initialize coordinate array of observations
-      ! on the process sub-domain
-      allocate(obs_p(dim_obs_p))
-      allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, dim_obs_p))
-      allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, dim_obs_p))
-      allocate(ivar_obs_p(dim_obs_p))
-
-      cnt = 1
-      i = 8
-      j = 8
-      ! loop over 4 variables
-      k = 1
-      if (.not. obs(i_obs)%isPsi) k = 2
-      ! loop over spatial domain
-      obs_p(cnt) = obs(i_obs)%obs_field_p(i, j, k)
-      obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + &
-         (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
-         (i-1)*obs(i_obs)%obs_den + 1
-      ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
-      ocoord_p(2, cnt) = (j-1)*obs(i_obs)%obs_den*dy
-      ivar_obs_p(cnt) = 1._wp/obs(i_obs)%rms_obs/obs(i_obs)%var_obs(i, j, k)
-      if (obs(i_obs)%var_obs(i, j, k) < 1e-12) ivar_obs_p(cnt) = 1e14
-
-      CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
-                              obs(i_obs)%thisobs%ncoord, local(i_obs)%local_range, dim_obs)
-
-      deallocate(obs_p, ocoord_p, ivar_obs_p)
-   end subroutine init_dim_obs_point
-
-   subroutine init_dim_obs_gen(i_obs, dim_obs)
-      use mod_model_pdaf, only: nx, ny, pi, maooam_model
-      use PDAFomi, only: PDAFomi_gather_obs
-      integer, intent(in)  :: i_obs
-      integer, intent(out) :: dim_obs
-
-      integer  :: i, j, k
-      integer  :: cnt
-      integer  :: offset
-      integer  :: dim_obs_p
-      integer  :: nvar, nxo, nyo
-
-      real(wp) :: n
-      real(wp) :: dx, dy
-
-      real(wp), allocatable :: obs_p(:)
-      real(wp), allocatable :: ivar_obs_p(:)
-      real(wp), allocatable :: ocoord_p(:, :)
-
-      obs(i_obs)%doassim = 1
-      nvar = 4
-      ! read observation variance
-      call get_var_obs(i_obs)
-      offset = 0
-      if (obs(i_obs)%obsvar == 'o') offset = 2*nx*ny
-
-      n = maooam_model%model_configuration%physics%n
-      dx = 2*pi/n/(nx - 1)
-      dy = pi/(ny - 1)
-      nxo = nx/obs(i_obs)%obs_den + 1
-      nyo = ny/obs(i_obs)%obs_den + 1
-      ! count valid observations
-      dim_obs_p = nvar*nxo*nyo
-      obs(i_obs)%dim_obs = dim_obs_p
-
-      ! Initialize vector of observations on the process sub-domain
-      ! Initialize coordinate array of observations
-      ! on the process sub-domain
-      if (dim_obs_p > 0) then
-         allocate(obs_p(dim_obs_p))
-         allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, dim_obs_p))
-         allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, dim_obs_p))
-         allocate(ivar_obs_p(dim_obs_p))
-         cnt = 1
-         ! loop over 4 variables
-         do k = 1, nvar
-            ! loop over spatial domain
-            do j = 1, nyo
-               do i = 1, nxo
-                  obs_p(cnt) = 0. ! obs(i_obs)%obs_field_p(i, j, k)
-                  obs(i_obs)%thisobs%id_obs_p(1, cnt) = offset + &
-                     (k-1)*nx*ny + nx*obs(i_obs)%obs_den*(j-1) + &
-                     (i-1)*obs(i_obs)%obs_den + 1
-                  ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
-                  ocoord_p(2, cnt) = (j-1)*obs(i_obs)%obs_den*dy
-                  ivar_obs_p(cnt) = 1._wp/obs(i_obs)%rms_obs/obs(i_obs)%var_obs(i, j, k)
-                  if (obs(i_obs)%var_obs(i, j, k) < 1e-12) ivar_obs_p(i) = 1e14
-                  cnt = cnt + 1
-               end do
-            end do
-         end do
-      else
-         allocate(obs_p(1))
-         allocate(obs(i_obs)%thisobs%id_obs_p(obs(i_obs)%nrows, 1))
-         allocate(ocoord_p(obs(i_obs)%thisobs%ncoord, 1))
-         allocate(ivar_obs_p(1))
-         obs(i_obs)%thisobs%id_obs_p = 0._wp
-      end if
-
-      CALL PDAFomi_gather_obs(obs(i_obs)%thisobs, dim_obs_p, obs_p, ivar_obs_p, ocoord_p, &
-                              obs(i_obs)%thisobs%ncoord, local(i_obs)%local_range, dim_obs)
-
-      deallocate(obs_p, ocoord_p, ivar_obs_p)
-   end subroutine init_dim_obs_gen
 
    subroutine get_obs_field(i_obs)
       use mod_nfcheck_pdaf, only: check
@@ -557,8 +387,11 @@ contains
       ! ******************************************************
       ! *** Apply observation operator H on a state vector ***
       ! ******************************************************
-      ! observation operator for observed grid point values
-      CALL PDAFomi_obs_op_gridpoint(obs(i_obs)%thisobs, state_p, ostate)
+
+      IF (obs(i_obs)%thisobs%doassim==1) THEN
+         ! observation operator for observed grid point values
+         CALL PDAFomi_obs_op_gridpoint(obs(i_obs)%thisobs, state_p, ostate)
+      END IF
    END SUBROUTINE obs_op_gridpoint
 
    SUBROUTINE init_dim_obs_l(i_obs, dim_obs_l)
@@ -606,24 +439,6 @@ contains
                                   local(i_obs)%local_range, local(i_obs)%srange, &
                                   coords_p, HP_p, HPH)
    END SUBROUTINE localize_covar
-
-   subroutine set_doassim_pdaf(step)
-      use mod_statevector_pdaf, only: sv_atm, sv_ocean
-      integer, intent(in) :: step
-      integer :: i_obs
-      do i_obs = 1, n_obs
-         obs(i_obs)%doassim = 0
-         if (mod(step, obs(i_obs)%delt_obs) == 0) then
-            if ((sv_ocean) .and. (obs(i_obs)%obsvar == 'o')) &
-               obs(i_obs)%doassim = 1
-            if ((sv_atm) .and. (obs(i_obs)%obsvar == 'a')) &
-               obs(i_obs)%doassim = 1
-         end if
-         if (obs(i_obs)%obsvar == 'b') then
-            obs(i_obs)%doassim = 1
-         end if
-      end do
-   end subroutine set_doassim_pdaf
 
    subroutine finalize_obs()
       integer :: i_obs

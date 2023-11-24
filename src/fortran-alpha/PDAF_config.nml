@@ -1,0 +1,36 @@
+&PDAF_nml
+screen = 2
+/
+&ens_nml
+  dim_ens = 16
+/
+&n_obs_nml
+ n_obs = 2
+/
+&obs_nml
+  namelist_names(1) = 'obsA.nml'
+  namelist_names(2) = 'obsO.nml'
+/
+&filter_nml
+filtertype = 4
+subtype = 6
+type_trans = 0
+type_sqrt = 0
+incremental = 0
+covartype = 1
+rank_analysis_enkf = 0
+/
+&infl_nml
+type_forget = 0
+forget = 0.8
+alpha_A = 0.
+alpha_O = 0.
+/
+&model_nml
+ ny = 129
+ nx = 129
+ ln_restart= .true.
+ restart_it = 1
+ tw = 90
+/
+
