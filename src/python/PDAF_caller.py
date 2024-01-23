@@ -147,7 +147,7 @@ class assimilate_pdaf:
     """assimilation calls
     """
 
-    def __init__(self, das):
+    def __init__(self, das, it):
         """constructor
 
         Parameters
@@ -169,7 +169,7 @@ class assimilate_pdaf:
             U_init_n_domains_pdaf = \
                 functools.partial(Localization.init_n_domains_pdaf,
                                   das.sv)
-            
+
             U_init_dim_l_pdaf = \
                 functools.partial(Localization.init_dim_l_pdaf,
                                   das.model, das.sv)
@@ -207,6 +207,40 @@ class assimilate_pdaf:
                                          das.UserFuncs.prepoststep_ens_pdaf,
                                          das.UserFuncs.next_observation_pdaf)
             else:
+                if (not das.isStrong):
+                    cnt_steps, step_obs, nsteps = PDAF.get_steps()
+                    if cnt_steps + 1 == nsteps and das.sv.component == 'ao':
+                        das.sv.setFields('o')
+                        das.obs.set_doassim(it, das.sv)
+                        if step_obs % das.obs['ObsO'].delt_obs == 0:
+                            status = \
+                                PDAF.put_state_estkf(das.UserFuncs.collect_state_pdaf,
+                                                    das.UserFuncsO.init_dim_obs_pdafomi,
+                                                    das.UserFuncsO.obs_op_pdafomi,
+                                                    PDAFomi.init_obs_f_cb,
+                                                    das.UserFuncs.prepoststep_ens_pdaf,
+                                                    PDAFomi.prodrinva_cb,
+                                                    PDAFomi.init_obsvar_cb)
+
+                            # *** Prepare start of next ensemble forecast ***
+                            if status==0:
+                                steps, time, doexit = 0, 0, 0
+                                steps, time, doexit, status = \
+                                    PDAF.get_state(steps, doexit,
+                                                   das.UserFuncs.next_observation_pdaf,
+                                                   das.UserFuncs.distribute_state_pdaf,
+                                                   das.UserFuncs.prepoststep_ens_pdaf,
+                                                   status)
+                                cnt_steps, step_obs, nsteps = PDAF.get_steps()
+                                step_obs = step_obs - nsteps
+                                nsteps = 1
+                                PDAF.set_steps(cnt_steps, step_obs, nsteps)
+                            if das.pe.filterpe:
+                                for obsname in das.obs.obs:
+                                    das.obs[obsname].deallocate_obs()
+                        das.sv.setFields('a')
+
+                das.obs.set_doassim(it, das.sv)
                 status = \
                     PDAFomi.assimilate_global(das.UserFuncs.collect_state_pdaf,
                                               das.UserFuncs.distribute_state_pdaf,

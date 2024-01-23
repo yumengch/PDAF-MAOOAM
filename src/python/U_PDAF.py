@@ -41,9 +41,9 @@ class PDAFUserFuncs:
         self.das = das
         self.firsttime = True
 
-    def init_ens_pdaf(self, filtertype, dim_p, dim_ens, state_p, 
+    def init_ens_pdaf(self, filtertype, dim_p, dim_ens, state_p,
                       uinv, ens_p, status_pdaf):
-        """initialise the ensemble for freerun where the 
+        """initialise the ensemble for freerun where the
            initial condition is generated from a model trajectory
 
         Parameters
@@ -83,8 +83,15 @@ class PDAFUserFuncs:
                                                                           dim_p//4))
                               for varname in ['psi_a', 'T_a', 'psi_o', 'T_o']])
             f.close()
-            _, _, ens_p, status_pdaf = PDAF.sampleens(eofV.T, svals, state_p, 
+            _, _, ens_p, status_pdaf = PDAF.sampleens(eofV.T, svals, state_p,
                                                       verbose=1, flag=status_pdaf)
+
+            ens_mean = np.mean(ens_p, axis=1, keepdims=True)
+            offset = das.model.nx*das.model.ny
+            for i, scale in enumerate(das.model.ensscale):
+                ens_p[i*offset:(i+1)*offset] = scale*(ens_p[i*offset:(i+1)*offset] - \
+                                                ens_mean[i*offset:(i+1)*offset]) + \
+                                                    ens_mean[i*offset:(i+1)*offset]
         else:
             ens_p = np.zeros((dim_p, dim_ens))
             ens_p[:, 0] = state_p.copy()
@@ -126,14 +133,24 @@ class PDAFUserFuncs:
             return state_p
 
         size = self.das.model.nx*self.das.model.ny
+        skipOcean = False
+        skipAtmos = False
+        if self.das.isStrong and self.das.distributeObsOnly:
+            if self.das.obs['ObsA'].doassim == 0: skipAtmos = True
+            if self.das.obs['ObsO'].doassim == 0: skipOcean = True
+
         for i, varname in enumerate(self.das.sv.varnames):
+            if skipAtmos and '_a' in varname: continue
+            if skipOcean and '_o' in varname: continue
             self.das.model.fields[varname][:] = \
                 state_p[i*size:(i+1)*size].reshape(self.das.model.nx,
                                                    self.das.model.ny, order='F')
 
-        if 'psi_a' in self.das.sv.varnames:
+        if 'psi_a' in self.das.sv.varnames and not skipAtmos:
+            if self.das.pe.mype_world == 0: print ('distbute atmos')
             self.das.model.toFourier_A()
-        if 'psi_o' in self.das.sv.varnames:
+        if 'psi_o' in self.das.sv.varnames and not skipOcean:
+            if self.das.pe.mype_world == 0: print ('distbute ocean')
             self.das.model.toFourier_O()
         return state_p
 
@@ -162,28 +179,11 @@ class PDAFUserFuncs:
         time : double
             Current model time
         """
-        condition = (not self.das.isStrong) and (self.das.sv.component == 'ao')
-        factor = 2 if condition else 1
-        shift = -1 if (condition) else 0
-        true_step = (stepnow - shift)//factor
-        if condition:
-            if ((true_step + self.das.obs.delt_obs) % self.das.obs['ObsA'].delt_obs) != 0:
-                shift = 0
-
-        if factor*true_step - stepnow == 1:
-            # weak coupling and assimilated atmosphere
-            nsteps = 1 
-            if true_step % self.das.obs['ObsO'].delt_obs != 0:
-                nsteps += self.das.obs.delt_obs*factor + shift
-        else:
-            # strong coupling or weak coupling assimilated ocean
-            nsteps = self.das.obs.delt_obs*factor + shift
-            
-
-        if (true_step + nsteps <= self.das.model.total_steps):
+        nsteps = self.das.obs.delt_obs
+        if (stepnow + nsteps <= self.das.model.total_steps):
             doexit = 0
             if (self.das.pe.mype_world == 0):
-                print((true_step, stepnow, 'Next observation at time step',
+                print((stepnow, stepnow, 'Next observation at time step',
                        stepnow + nsteps))
         else:
             nsteps = 0

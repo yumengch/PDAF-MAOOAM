@@ -71,6 +71,7 @@ class DAS:
         # init DAS options
         self.screen = config['Global'].getint('screen', 3)
         self.isStrong = config['Global'].getboolean('isStrong', True)
+        self.distributeObsOnly = config['Global'].getboolean('distributeObsOnly', False)
         self.is_freerun = config['Global'].getboolean('is_freerun', False)
         # init parallelisation
         self.pe = parallelization(config['Ensemble'], self.screen)
@@ -113,31 +114,23 @@ class DAS:
             # output for analysis
             if (step % self.model.tw) < self.model.dt:
                 if self.pe.mype_world == 0: print(('a', step))
-                self.model.writer.write(t, 'a', self.model.field_p)
+                # self.model.writer.write(t, 'a', self.model.field_p)
             #model  forward
             t = self.model.step()
             # output for forecast
             if ((step + 1) % self.model.tw) < self.model.dt:
                 if self.pe.mype_world == 0: print(('f', step))
-                self.model.writer.write(t, 'f', self.model.field_p)
+                # self.model.writer.write(t, 'f', self.model.field_p)
 
-            if ((not self.isStrong) and (self.sv.component == 'ao')):
-                self.sv.setFields('a')
-                self.obs['ObsA'].doassim = 1
-                self.obs['ObsO'].doassim = 0
-            if (not self.is_freerun): PDAF_caller.assimilate_pdaf(self)
-
-            if ((not self.isStrong) and (self.sv.component == 'ao')):
-                self.sv.setFields('o')
-                self.obs['ObsA'].doassim = 0
-                self.obs['ObsO'].doassim = 1
-                PDAF_caller.assimilate_pdaf(self)
+            if (not self.is_freerun): PDAF_caller.assimilate_pdaf(self, step+1)
 
 
-    def __del__(self):
+    def finalise(self):
         import pyPDAF.PDAF as PDAF
-        if (self.pe.mype_world==0): PDAF.print_info(2)
-        if (self.pe.mype_world==0): PDAF.print_info(11)
-        if (self.pe.mype_world==0): PDAF.print_info(3)
+        PDAF.print_info(2)
+        PDAF.print_info(11)
+        PDAF.print_info(3)
 
         PDAF.deallocate()
+
+        self.pe.finalise()

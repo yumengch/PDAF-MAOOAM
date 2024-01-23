@@ -30,7 +30,6 @@ class PDAFomiUserFuncs:
     def __init__(self, das):
         self.das = das
 
-
     def get_obs_f(self, step, dim_obs_f, observation_f):
         """Save synthetic observations
 
@@ -57,7 +56,6 @@ class PDAFomiUserFuncs:
 
         return observation_f
 
-
     def init_dim_obs_gen_pdafomi(self, step, dim_obs):
         """initialise observation dimensions
 
@@ -83,7 +81,6 @@ class PDAFomiUserFuncs:
                 dim_obs += obs.dim_obs
         return dim_obs
 
-
     def init_dim_obs_pdafomi(self, step, dim_obs):
         """initialise observation dimensions
 
@@ -100,19 +97,15 @@ class PDAFomiUserFuncs:
             Description
         """
         dim_obs = 0
-        condition = (not self.das.isStrong) and (self.das.sv.component == 'ao')
-        factor = 2 if condition else 1
-        shift = -1 if condition else 0
-        true_step = (step - shift)//factor
         for obsname, obs in self.das.obs.items():
-            obs.init_dim_obs(true_step, dim_obs, self.das.model, 
+            if obs.doassim == 0: continue
+            obs.init_dim_obs(step, dim_obs, self.das.model,
                              self.das.isStrong,
                              self.das.pe.mype_filter,
-                             self.das.sv.dim_state, 
+                             self.das.sv.dim_state,
                              self.das.sv.dim_state_p)
             dim_obs += obs.dim_obs
         return dim_obs
-
 
     def obs_op_pdafomi(self, step, dim_p, dim_obs_p, state_p, ostate):
         """turn state vector to observation space
@@ -131,10 +124,9 @@ class PDAFomiUserFuncs:
             state vector in obs space
         """
         for obsname, obs in self.das.obs.items():
-            if(obs.doassim):
+            if obs.doassim == 1:
                 ostate = obs.obs_op_gridpoint(step, state_p, ostate)
         return ostate
-
 
     def init_dim_obs_l_pdafomi(self, domain_p, step, dim_obs, dim_obs_l):
         """initialise local observation dimension

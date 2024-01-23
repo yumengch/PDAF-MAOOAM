@@ -93,7 +93,7 @@ contains
    subroutine init_single_obs(i_obs, nmlname)
       use mod_model_pdaf   , only: nx, ny, pi, maooam_model
       use mod_parallel_pdaf, only: mype_world
-
+      use mod_statevector_pdaf, only: obsA
       integer     , intent(in) :: i_obs
       character(*), intent(in) :: nmlname
 
@@ -181,6 +181,11 @@ contains
       ! allocate array for observation and its variance
       nVar = 2
       if (obs(i_obs)%obsvar == 'b') nVar = 4
+      if (obs(i_obs)%obsvar == 'a') then
+         obsA = .true.
+      else
+         obsA = .false.
+      end if
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
       allocate(obs(i_obs)%obs_field_p(nxo, nyo, nVar))
@@ -217,6 +222,7 @@ contains
       call get_var_obs(i_obs)
 
       offset = 0
+      if (obs(i_obs)%obsvar == 'o') offset = 2*nx*ny
 
       n = maooam_model%model_configuration%physics%n
       dx = 2*pi/n/(nx - 1)

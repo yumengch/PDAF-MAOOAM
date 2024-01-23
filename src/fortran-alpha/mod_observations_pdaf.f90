@@ -268,58 +268,54 @@ contains
       REAL(wp), INTENT(in)    :: state_p(dim_p)        !< PE-local model state
       REAL(wp), INTENT(inout) :: ostate(dim_obs)       !< Full observed state
 
-      integer :: nxo, nyo, nvar
-      integer :: i, j, k, l, cnt
+      integer :: nxo, nyo
+      integer :: i, j, k, cnt
       ! ******************************************************
       ! *** Apply observation operator H on a state vector ***
       ! ******************************************************
       nxo = nx/obs(1)%obs_den + 1
       nyo = ny/obs(1)%obs_den + 1
-      nvar = 2
       cnt = 1
-      do k = 1, nvar
-         ! loop over spatial domain
-         do j = 1, nyo
-            do i = 1, nxo
-               l = (k-1)*nx*ny + nx*obs(1)%obs_den*(j-1) + &
-                        (i-1)*obs(1)%obs_den + 1
-               ostate(cnt) = state_p(l)
-               cnt = cnt + 1
-            end do
+      ! loop over spatial domain
+      do j = 1, nyo
+         do i = 1, nxo
+            k = (j-1)*obs(1)%obs_den*nx + &
+                (i-1)*obs(1)%obs_den + 1
+            ostate(cnt) = state_p(k)
+            ostate(cnt + nxo*nyo) = state_p(k + nx*ny)
+            cnt = cnt + 1
          end do
       end do
    END SUBROUTINE obs_op_Aonly
 
-   SUBROUTINE obs_op_A(dim_p, dim_obs, state_p, ostate, is_mean)
+   SUBROUTINE obs_op_A(dim_p, dim_obs, state_p, ostate, ens_p_noupdate, it)
       use mod_model_pdaf, only: nx, ny
-      use mod_model_pdaf, only: psi_o_f, T_o_f
       use mod_inflation_pdaf, only: alpha_O
       IMPLICIT NONE
       ! *** Arguments ***
       INTEGER,  INTENT(in)    :: dim_p                 !< PE-local state dimension
       INTEGER,  INTENT(in)    :: dim_obs               !< Dimension of full observed state (all observed fields)
       REAL(wp), INTENT(in)    :: state_p(dim_p)        !< PE-local model state
+      REAL(wp), INTENT(in)    :: ens_p_noupdate(:)        !< PE-local model state
       REAL(wp), INTENT(inout) :: ostate(dim_obs)       !< Full observed state
-      logical, intent(in)  :: is_mean
+      integer, intent(in)  :: it
 
-      integer :: nxo, nyo, nvar
-      integer :: i, j, k, l, cnt
+      integer :: nxo, nyo
+      integer :: i, j, k, cnt
       ! ******************************************************
       ! *** Apply observation operator H on a state vector ***
       ! ******************************************************
       nxo = nx/obs(1)%obs_den + 1
       nyo = ny/obs(1)%obs_den + 1
-      nvar = 2
       cnt = 1
-      do k = 1, nvar
-         ! loop over spatial domain
-         do j = 1, nyo
-            do i = 1, nxo
-               l = (k-1)*nx*ny + nx*obs(1)%obs_den*(j-1) + &
-                        (i-1)*obs(1)%obs_den + 1
-               ostate(cnt) = state_p(l)
-               cnt = cnt + 1
-            end do
+      ! loop over spatial domain
+      do j = 1, nyo
+         do i = 1, nxo
+            k = (j-1)*obs(1)%obs_den*nx + &
+                (i-1)*obs(1)%obs_den + 1
+            ostate(cnt) = state_p(k)
+            ostate(cnt + nxo*nyo) = state_p(k + nx*ny)
+            cnt = cnt + 1
          end do
       end do
 
@@ -327,29 +323,32 @@ contains
       ! loop over spatial domain
       do j = 1, nyo
          do i = 1, nxo
-            ostate(cnt) = psi_o_f((i-1)*obs(2)%obs_den + 1, (j-1)*obs(2)%obs_den + 1)
-            ostate(nxo*nyo + cnt) = T_o_f((i-1)*obs(2)%obs_den + 1, (j-1)*obs(2)%obs_den + 1)
+            k = (j-1)*obs(1)%obs_den*nx + &
+                (i-1)*obs(1)%obs_den + 1
+            ostate(cnt) = ens_p_noupdate((it-1)*dim_p + k)
+            ostate(cnt + nxo*nyo) = ens_p_noupdate((it-1)*dim_p + k + nx*ny)
             cnt = cnt + 1
          end do
       end do
 
-      if (.not. is_mean) ostate(2*nxo*nyo+1:) = alpha_O*ostate(2*nxo*nyo+1:)
+      if (it > 1) ostate(2*nxo*nyo+1:) = alpha_O*ostate(2*nxo*nyo+1:)
+
    END SUBROUTINE obs_op_A
 
-   SUBROUTINE obs_op_O(dim_p, dim_obs, state_p, ostate, is_mean)
+   SUBROUTINE obs_op_O(dim_p, dim_obs, state_p, ostate, ens_p_noupdate, it)
       use mod_model_pdaf, only: nx, ny
-      use mod_model_pdaf, only: psi_a_f, T_a_f
       use mod_inflation_pdaf, only: alpha_A
       IMPLICIT NONE
       ! *** Arguments ***
       INTEGER,  INTENT(in)    :: dim_p                 !< PE-local state dimension
       INTEGER,  INTENT(in)    :: dim_obs               !< Dimension of full observed state (all observed fields)
       REAL(wp), INTENT(in)    :: state_p(dim_p)        !< PE-local model state
+      REAL(wp), INTENT(in)    :: ens_p_noupdate(:)        !< PE-local model state
       REAL(wp), INTENT(inout) :: ostate(dim_obs)       !< Full observed state
-      logical, intent(in)  :: is_mean
+      integer, intent(in)  :: it
 
-      integer :: nxo, nyo, nvar
-      integer :: i, j, k, l, cnt
+      integer :: nxo, nyo
+      integer :: i, j, k, cnt
       ! ******************************************************
       ! *** Apply observation operator H on a state vector ***
       ! ******************************************************
@@ -360,25 +359,25 @@ contains
       ! loop over spatial domain
       do j = 1, nyo
          do i = 1, nxo
-            ostate(cnt) = psi_a_f((i-1)*obs(1)%obs_den + 1, (j-1)*obs(1)%obs_den + 1)
-            ostate(cnt + nxo*nyo) = T_a_f((i-1)*obs(1)%obs_den + 1, (j-1)*obs(1)%obs_den + 1)
+            k = (j-1)*obs(1)%obs_den*nx + &
+                (i-1)*obs(1)%obs_den + 1
+            ostate(cnt) = ens_p_noupdate((it-1)*dim_p + k)
+            ostate(cnt + nxo*nyo) = ens_p_noupdate((it-1)*dim_p + k + nx*ny)
             cnt = cnt + 1
          end do
       end do
 
-      if (.not. is_mean) ostate(:2*nxo*nyo) = alpha_A*ostate(:2*nxo*nyo)
+      if (it > 1) ostate(:2*nxo*nyo) = alpha_A*ostate(:2*nxo*nyo)
 
-      nvar = 2
       cnt = 2*nxo*nyo + 1
-      do k = 1, nvar
-         ! loop over spatial domain
-         do j = 1, nyo
-            do i = 1, nxo
-               l = (k-1)*nx*ny + nx*obs(2)%obs_den*(j-1) + &
-                        (i-1)*obs(2)%obs_den + 1
-               ostate(cnt) = state_p(l)
-               cnt = cnt + 1
-            end do
+      ! loop over spatial domain
+      do j = 1, nyo
+         do i = 1, nxo
+            k = (j-1)*obs(2)%obs_den*nx + &
+                (i-1)*obs(2)%obs_den + 1
+            ostate(cnt) = state_p(k)
+            ostate(cnt + nxo*nyo) = state_p(k + nx*ny)
+            cnt = cnt + 1
          end do
       end do
    END SUBROUTINE obs_op_O

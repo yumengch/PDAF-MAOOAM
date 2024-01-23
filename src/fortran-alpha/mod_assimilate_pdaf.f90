@@ -32,7 +32,7 @@ contains
                              obs_op_pdafomi, &         ! Obs. operator for full obs. vector for PE-local domain
                              init_obs_pdafomi, & ! Get dimension of obs. vector for local analysis domain
                              prodRinvA_pdafomi, &    ! Apply localization to covariance matrix in LEnKF
-                             init_obsvar_pdafomi
+                             init_obsvar_pdafomi, op_cnt
       use mod_statevector_pdaf, only: update_ocean, update_both
       use mod_model_pdaf, only: toPhysical_A, toPhysical_O
 
@@ -47,9 +47,10 @@ contains
 
       ! Call assimilate routine for global or local filter
       call toPhysical_A()
-      call toPhysical_O()
       if (update_both .and. cnt_steps + 1 == nsteps) then
+         call toPhysical_O()
          update_ocean = .true.
+         op_cnt = 0
          CALL PDAF_put_state_etkf(collect_oceanstate_pdaf, &
                                   init_dim_obs_pdafomi, &
                                   obs_op_pdafomi, &
@@ -74,7 +75,8 @@ contains
          CALL PDAFomi_dealloc()
          update_ocean = .false.
       end if
-      
+    
+      op_cnt = 0
       call PDAF_assimilate_etkf(collect_atmospherestate_pdaf, &
                                 distribute_atmospherestate_pdaf, &
                                 init_dim_obs_pdafomi, &

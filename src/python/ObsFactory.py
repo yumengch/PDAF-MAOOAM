@@ -26,6 +26,13 @@ class ObsFactory:
     def values(self):
         return self.obs.values()
 
+    def set_doassim(self, step, sv):
+        for obsname in self.obs:
+            self.obs[obsname].doassim = 0
+            if step % self.obs[obsname].delt_obs == 0:
+                if set(self.obs[obsname].varnames).issubset(sv.varnames):
+                   self.obs[obsname].doassim = 1
+
     @property
     def nobs(self):
         return len(self.obs)

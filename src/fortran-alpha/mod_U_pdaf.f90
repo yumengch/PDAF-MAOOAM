@@ -34,6 +34,8 @@ integer :: timer_distr_start, timer_distr_end
 integer :: timer_next_start, timer_next_end
 integer :: timer_prepost_start, timer_prepost_end
 real(wp) :: collect_dur, distr_dur, next_dur, prepost_dur
+real(wp), ALLOCATABLE :: ens_p_noupdate(:)
+
 contains
    subroutine init_ens_pdaf(filtertype, dim_p, dim_ens, state_p, uinv, ens_p, status_pdaf)
       implicit none
@@ -146,13 +148,28 @@ contains
 
    SUBROUTINE collect_atmospherestate_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: psi_a_f, T_a_f, nx, ny
+         ONLY: psi_a_f, T_a_f, psi_o_f, T_o_f, nx, ny
+      use mod_parallel_pdaf, only: COMM_couple, MPIerr, dim_ens => n_modeltasks
+      use mpi
       IMPLICIT NONE
       ! *** Arguments ***
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
 
+      integer :: i
       call SYSTEM_CLOCK(timer_collect_start)
+      state_p = 0.
+      state_p(:nx*ny) = reshape(psi_o_f, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_o_f, [nx*ny])
+      ens_p_noupdate = 0.
+      call MPI_Gather(state_p, dim_p, MPI_DOUBLE_PRECISION, &
+                      ens_p_noupdate(dim_p+1:), dim_p, MPI_DOUBLE_PRECISION, &
+                      0, COMM_couple, MPIerr)
+      ens_p_noupdate(:dim_p) =  0.
+      do i = 1, dim_ens
+         ens_p_noupdate(:dim_p) = ens_p_noupdate(:dim_p) + ens_p_noupdate(i*dim_p+1:(i+1)*dim_p)/dim_ens
+      end do
+
       state_p = 0.
       state_p(:nx*ny) = reshape(psi_a_f, [nx*ny])
       state_p(nx*ny+1:2*nx*ny) = reshape(T_a_f, [nx*ny])
@@ -164,13 +181,27 @@ contains
 
    SUBROUTINE collect_oceanstate_pdaf(dim_p, state_p)
       USE mod_model_pdaf, &             ! Model variables
-         ONLY: psi_o_f, T_o_f, toPhysical_A, toPhysical_O, nx, ny
+         ONLY: psi_o_f, T_o_f, psi_a_f, T_a_f, nx, ny
+      use mod_parallel_pdaf, only: COMM_couple, MPIerr, dim_ens => n_modeltasks
+      use mpi
       IMPLICIT NONE
       ! *** Arguments ***
       INTEGER, INTENT(in) :: dim_p           !< PE-local state dimension
       REAL(wp), INTENT(inout) :: state_p(dim_p)  !< local state vector
-
+      integer :: i
       call SYSTEM_CLOCK(timer_collect_start)
+      state_p = 0.
+      state_p(:nx*ny) = reshape(psi_a_f, [nx*ny])
+      state_p(nx*ny+1:2*nx*ny) = reshape(T_a_f, [nx*ny])
+      ens_p_noupdate = 0.
+      call MPI_Gather(state_p, dim_p, MPI_DOUBLE_PRECISION, &
+                      ens_p_noupdate(dim_p+1:), dim_p, MPI_DOUBLE_PRECISION, &
+                      0, COMM_couple, MPIerr)
+      ens_p_noupdate(:dim_p) =  0.
+      do i = 1, dim_ens
+         ens_p_noupdate(:dim_p) = ens_p_noupdate(:dim_p) + ens_p_noupdate(i*dim_p+1:(i+1)*dim_p)/dim_ens
+      end do
+
       state_p = 0.
       state_p(1:nx*ny) = reshape(psi_o_f, [nx*ny])
       state_p(nx*ny+1:2*nx*ny) = reshape(T_o_f, [nx*ny])

@@ -55,23 +55,6 @@ contains
 
       ! Check  whether the filter is domain-localized
       CALL PDAF_get_localfilter(localfilter)
-
-      ! ! Call assimilate routine for global or local filter
-      ! if (update_ocean .and. cnt_steps + 1 == nsteps) then
-      !       CALL PDAF_put_state_estkf(collect_state_pdaf, init_dim_obs_pdafomi, obs_op_pdafomi, &
-      !                               PDAFomi_init_obs_f_cb, prepoststep_ens_pdaf, &
-      !                               PDAFomi_prodRinvA_cb, &
-      !                               PDAFomi_init_obsvar_cb, status_pdaf)
-
-      !       ! *** Prepare start of next ensemble forecast ***
-      !       IF (status_pdaf==0) then
-      !          CALL PDAF_get_state(steps, time, doexit, next_observation_pdaf, distribute_oceanstate_pdaf, &
-      !          prepoststep_ens_pdaf, status_pdaf)
-      !          step_obs = step_obs - nsteps
-      !          nsteps = 1
-      !       end if
-      !       CALL PDAFomi_dealloc()
-      ! end if
       CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
            init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &
            next_observation_pdaf, status_pdaf)

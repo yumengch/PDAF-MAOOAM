@@ -12,6 +12,8 @@ import pyPDAF.PDAF as PDAF
 import functools
 import time
 
+import mod_model
+
 def getVarAttrs():
     fieldnames = ['psi_a', 'T_a', 'psi_o', 'T_o']
     field_standard_name = ['atmosphere_streamfunction',
@@ -55,26 +57,26 @@ def getFileAttrs():
 def init_model_params(n):
     # Setting some model parameters
     # Model parameters instantiation with default specs
-    self.model_parameters = QgParams({'n' : n, 'kd': 0.02, 'kdp': 0.02, 'n': n, 'r': 1.e-7,
+    model_parameters = QgParams({'n' : n, 'kd': 0.02, 'kdp': 0.02, 'n': n, 'r': 1.e-7,
                                  'h': 165, 'd': 9e-8})
     # Mode truncation at the wavenumber 2 in both x and y spatial coordinate
-    self.model_parameters.set_atmospheric_channel_fourier_modes(2, 2)
+    model_parameters.set_atmospheric_channel_fourier_modes(2, 2)
     # Mode truncation at the wavenumber 2 in the x and at the
     # wavenumber 4 in the y spatial coordinates for the ocean
-    self.model_parameters.set_oceanic_basin_fourier_modes(2, 4)
+    model_parameters.set_oceanic_basin_fourier_modes(2, 4)
 
     # Setting MAOOAM parameters according to the publication linked above
-    self.model_parameters.set_params({'kd': 0.02, 'kdp': 0.02, 'n': n, 'r': 1.e-7,
+    model_parameters.set_params({'kd': 0.02, 'kdp': 0.02, 'n': n, 'r': 1.e-7,
                                       'h': 165, 'd': 9e-8})
-    self.model_parameters.atemperature_params.set_params({'eps': 0.7, 'T0': 290.2, 'hlambda': 15.06, })
-    self.model_parameters.gotemperature_params.set_params({'gamma': 6.6e8, 'T0': 299.35})
-    self.model_parameters.atemperature_params.set_insolation(103.3333, 0)
-    self.model_parameters.gotemperature_params.set_insolation(310, 0)
+    model_parameters.atemperature_params.set_params({'eps': 0.7, 'T0': 290.2, 'hlambda': 15.06, })
+    model_parameters.gotemperature_params.set_params({'gamma': 6.6e8, 'T0': 299.35})
+    model_parameters.atemperature_params.set_insolation(103.3333, 0)
+    model_parameters.gotemperature_params.set_insolation(310, 0)
 
     return model_parameters
 
 
-def toPhysical(model_parameters, coeffs, xc, yc):
+def toPhysicalPy(model_parameters, coeffs, xc, yc):
     # define spatial domain
     natm, noc = model_parameters.nmod
     nt = len(coeffs)
@@ -96,6 +98,11 @@ def toPhysical(model_parameters, coeffs, xc, yc):
         psi_o += np.outer(coeffs[:, i+2*natm], b(xc, yc)).reshape((nt, ) + xc.shape)
         T_o += np.outer(coeffs[:, i+2*natm+noc], b(xc, yc)).reshape((nt, ) + xc.shape)
 
+    return psi_a[0], T_a[0], psi_o[0], T_o[0]
+
+def toPhysical(coeffs, psi_a, T_a, psi_o, T_o):
+    mod_model.mod_model.tophysical_a_multistep(coeffs, psi_a, T_a)
+    mod_model.mod_model.tophysical_o_multistep(coeffs, psi_o, T_o)
     return psi_a, T_a, psi_o, T_o
 
 
@@ -128,52 +135,45 @@ if __name__ == '__main__':
     n = 1.5
     mp = init_model_params(n)
     # read model trajectory
-    ds = xr.open_dataset('trajectory.nc')
+    ds = xr.open_dataset('trajectory.nc', decode_times=False)
     nt = ds.dims['time']
     fields = np.hstack([ds.psi_a_f, ds.T_a_f, ds.psi_o_f, ds.T_o_f])
-    
+    fields = np.asfortranarray(fields)
+
     start = time.perf_counter()
     # convert model from Fourier to physical space
-    x0 = 0; x1 = 2*np.pi/n
-    y0 = 0; y1 = np.pi
-    nx = 257 
-    ny = 257
-    X = np.linspace(x0, x1, nx)
-    Y = np.linspace(y0, y1, ny)
-    xc, yc = np.meshgrid(X, Y)
+    nx = 129 
+    ny = 129
     # avoiding excessive memory use
-    psi_a = np.zeros((nt), + xc.shape)
-    T_a = np.zeros_like(psi_a)
-    psi_o = np.zeros_like(psi_a)
-    T_o = np.zeros_like(psi_a)
+    psi_a = np.zeros((nt, nx, ny), order='F')
+    T_a = np.zeros_like(psi_a, order='F')
+    psi_o = np.zeros_like(psi_a, order='F')
+    T_o = np.zeros_like(psi_a, order='F')   
 
-    nloops = 10
-    sub_nt = nt // (nloops - 1)
-    for i in range(nloops):
-        start = i*sub_nt
-        end = (i+1)*sub_nt
-        if i == nloops - 1:
-            end = nt
-    #     psi_a[start:end], T_a[start:end], psi_o[start:end], T_o[start:end] = toPhysical(mp, fields, xc, yc)
-    # print ('transformation time', time.perf_counter() - start)
+    mod_model.mod_model.initialize_model()
+    psi_a, T_a, psi_o, T_o = toPhysical(fields, psi_a, T_a, psi_o, T_o)
+    psi_a = np.ascontiguousarray(psi_a)
+    T_a = np.ascontiguousarray(T_a)
+    psi_o = np.ascontiguousarray(psi_o)
+    T_o = np.ascontiguousarray(T_o)
 
-    # # do EOF decomposition using PDAF
-    # start = time.perf_counter()
-    # maxtimes = nt
-    # nrank = nt
-    # size = nx*ny
-    # dim_state = np.array([size, size, size, size])
-    # offsets = np.array([0, size, 2*size, 3*size])
-    # state = np.hstack([psi_a.reshape(nt, size), T_a.reshape(nt, size), psi_o.reshape(nt, size), T_o.reshape(nt, size)])
-    # state = state.T
-    # _, stddev, svals, svdU, meanstate, status = PDAF.eofcovar(dim_state, offsets, 1, 1,
-    #                                                           state, state.mean(axis=1), 3)
-    # assert status == 0, 'Error in PDAF.EOFcovar'
-    # print ('genCovar time', time.perf_counter() - start)
+    # do EOF decomposition using PDAF
+    start = time.perf_counter()
+    maxtimes = nt
+    nrank = nt
+    size = nx*ny
+    dim_state = np.array([size, size, size, size])
+    offsets = np.array([0, size, 2*size, 3*size])
+    state = np.hstack([psi_a.reshape(nt, size), T_a.reshape(nt, size), psi_o.reshape(nt, size), T_o.reshape(nt, size)])
+    state = state.T
+    _, stddev, svals, svdU, meanstate, status = PDAF.eofcovar(dim_state, offsets, 1, 1,
+                                                              state, state.mean(axis=1), 3)
+    assert status == 0, 'Error in PDAF.EOFcovar'
+    print ('genCovar time', time.perf_counter() - start)
 
-    # start = time.perf_counter()
-    # # save the covariance matrix
-    # ds = xr.Dataset(getDataArrays(svals, svdU.T, nx, ny, nrank, meanstate),
-    #                  attrs=getFileAttrs())
-    # ds.to_netcdf('covariance.nc')
-    # print ('write time', time.perf_counter() - start)
+    start = time.perf_counter()
+    # save the covariance matrix
+    ds = xr.Dataset(getDataArrays(svals, svdU.T, nx, ny, nrank, meanstate),
+                     attrs=getFileAttrs())
+    ds.to_netcdf('covariance.nc')
+    print ('write time', time.perf_counter() - start)

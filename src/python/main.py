@@ -31,5 +31,7 @@ def main():
     das = DAS()
     das.init(config)
     das.forward()
+    das.finalise()
+    
 if __name__ == '__main__':
     main()

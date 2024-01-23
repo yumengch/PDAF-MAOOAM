@@ -36,5 +36,6 @@ implicit none
 integer :: type_forget = 0
 ! forgeting factor
 real(wp) :: forget = 1
-namelist /infl_nml/ type_forget, forget
+real(wp) :: alpha = 0.
+namelist /infl_nml/ type_forget, forget, alpha
 end module mod_inflation_pdaf

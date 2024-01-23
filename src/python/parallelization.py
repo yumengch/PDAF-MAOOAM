@@ -274,7 +274,7 @@ class parallelization:
                 print(('!!! Resetting number of parallel'
                        'ensemble tasks to number of ensemble states!'))
 
-    def __del__(self):
+    def finalise(self):
         """Finalize MPI
         """
         MPI.COMM_WORLD.Barrier()

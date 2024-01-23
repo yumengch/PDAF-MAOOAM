@@ -79,7 +79,7 @@ class Obs:
         timestep for the observation files
     file_timecount : int
         current time step of the observation file
-    
+
     """
 
     def __init__(self, i_obs, obsname, mype_filter, model_n):
@@ -104,7 +104,7 @@ class Obs:
 
         config = configparser.ConfigParser()
         config.read(f'{obsname}.ini')
-        
+
         self.local = Localization(config['local'])
 
         config = config['init']
@@ -170,12 +170,6 @@ class Obs:
         dim_state_p : ndarray
             integer array for PE-local grid size
         """
-        if isStrong:
-            if (step % self.delt_obs == 0):
-                self.doassim = 1
-            else:
-                self.doassim = 0
-        
         if (self.doassim == 0):
             self.dim_obs =0
             return
@@ -284,7 +278,7 @@ class Obs:
         i = np.arange(nx)[::self.obs_den]
         j = np.arange(ny)[::self.obs_den]
         idx = np.arange(nx*ny, dtype=int).reshape(ny, nx)[j][:, i].ravel()
-        self.id_obs_p[0, :self.dim_obs_p] = 1 + offset + np.concatenate([idx + i*nx*ny 
+        self.id_obs_p[0, :self.dim_obs_p] = 1 + offset + np.concatenate([idx + i*nx*ny
                                                                      for i in range(nobsvar)],
                                                                      dtype=int)[obs_field_tmp > self.missing_value]
 
@@ -304,13 +298,13 @@ class Obs:
         dx = model.xc[0, 1] - model.xc[0, 0]
         dy = model.yc[1, 0] - model.yc[0, 0]
         obs_field_tmp = obs_field_p.ravel()
-        nobs = len(self.varnames)    
+        nobs = len(self.varnames)
         # assuming first ravel dx then ravel dy
-        self.ocoord_p[0, :self.dim_obs_p] = np.tile(np.arange(nx)[::self.obs_den]*dx, 
+        self.ocoord_p[0, :self.dim_obs_p] = np.tile(np.arange(nx)[::self.obs_den]*dx,
                                                     (ny//self.obs_den + 1)*nobs
                                                     )[obs_field_tmp > self.missing_value]
         self.ocoord_p[1, :self.dim_obs_p] = np.tile(np.repeat(
-                                                              np.arange(ny)[::self.obs_den]*dy, 
+                                                              np.arange(ny)[::self.obs_den]*dy,
                                                               (nx//self.obs_den + 1)
                                                               ),
                                                     nobs)[obs_field_tmp > self.missing_value]
@@ -318,7 +312,7 @@ class Obs:
     def set_ivar_obs_p(self, obs_field_p):
         """set ivar_obs_p
         """
-        
+
         f = xr.open_dataset(self.filename_var, decode_times=False)
         var_obs = np.concatenate([f[varname+'_var'].to_numpy().ravel()
                                  for varname in self.varnames])
@@ -346,7 +340,7 @@ class Obs:
         """
         f = xr.open_dataset(self.filename, decode_times=False)
         self.file_timecount += self.file_timestep
-        obs_field = np.concatenate([f[varname].isel(time=self.file_timecount).to_numpy().ravel() 
+        obs_field = np.concatenate([f[varname].isel(time=self.file_timecount).to_numpy().ravel()
                               for varname in self.varnames])
         f.close()
         return obs_field
@@ -434,7 +428,6 @@ class Obs:
         return PDAFomi.localize_covar(self.i_obs, self.local.loc_weight,
                                self.local.local_range, self.local.srange,
                                coords_p, HP_p, HPH)
-
 
     def deallocate_obs(self):
         """deallocate PDAFomi object

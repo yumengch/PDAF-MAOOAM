@@ -26,6 +26,8 @@ integer :: timer_dimomi_start, timer_dimomi_end
 integer :: timer_op_start, timer_op_end
 real(wp) :: getobs_dur, dimomi_dur, op_dur
 
+integer :: op_cnt
+
 contains
    !! set up the observation information and obtain the
    !! size of the observation vector for assimilation
@@ -58,6 +60,7 @@ contains
       ! include functions for different observations
       use mod_observations_pdaf, only: obs_op_A, obs_op_Aonly, obs_op_O
       use mod_statevector_pdaf, only: update_ocean, update_both
+      use mod_U_pdaf, only: ens_p_noupdate
       implicit none
       ! *** arguments ***
       integer,  intent(in)    :: step                 !< current time step
@@ -72,15 +75,15 @@ contains
       ! ******************************************************
       call system_clock(timer_op_start)
       if (update_both) then
+         op_cnt = op_cnt + 1
          if (update_ocean) then
-            call obs_op_O(dim_p, dim_obs, state_p, ostate, ismean)
+            call obs_op_O(dim_p, dim_obs, state_p, ostate, ens_p_noupdate, op_cnt)
          else
-            call obs_op_A(dim_p, dim_obs, state_p, ostate, ismean)
+            call obs_op_A(dim_p, dim_obs, state_p, ostate, ens_p_noupdate, op_cnt)
          end if
       else
          call obs_op_Aonly(dim_p, dim_obs, state_p, ostate)
       end if
-
       call system_clock(timer_op_end, t_rate)
       op_dur = op_dur + &
           (real(timer_op_end, wp) - real(timer_op_start, wp))/real(t_rate, wp)

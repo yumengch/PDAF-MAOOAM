@@ -79,12 +79,14 @@ class Model:
         self.t = self.t0
         self.field_p_new = self.field_p.copy()
         # init writer
-        self.writer = ModelWriter('maooam_{:03}.nc'.format(task_id), 
+        self.writer = ModelWriter('maooam_{:03}.nc'.format(task_id),
                                   mod_model.mod_model.natm, mod_model.mod_model.noc)
         # write the init time step
         self.writer.write(self.t0*self.dt, 'f', self.field_p)
         # # model index
         # self.task_id = task_id
+        self.ensscale = config.get('ensscale')
+        self.ensscale = self.ensscale.split(',')
 
 
     def init_params(self, n):

@@ -63,7 +63,8 @@ contains
       use pdaf_interfaces_module, only: PDAF_init, PDAF_get_state
       use mod_U_pdaf, only: init_ens_pdaf, &
                             distribute_atmospherestate_pdaf, &
-                            next_observation_pdaf,prepoststep_ens_pdaf
+                            next_observation_pdaf,prepoststep_ens_pdaf, &
+                            ens_p_noupdate
       use mod_model_pdaf, only: nx, ny, dim_ens
       integer, intent(in) :: screen
 
@@ -84,7 +85,7 @@ contains
          n_param_i = 7
          call setETKFOptions(filter_param_i, filter_param_r)
       endif
-
+      if (.not. allocated(ens_p_noupdate)) allocate( ens_p_noupdate((dim_ens+1)*2*nx*ny) )
       call PDAF_init(filtertype, subtype, 0, filter_param_i, n_param_i, &
                      filter_param_r, 2, comm_model, comm_filter, &
                      comm_couple, task_id, dim_ens, filterpe, &

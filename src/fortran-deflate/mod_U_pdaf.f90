@@ -180,11 +180,11 @@ contains
       use mod_parallel_pdaf, only: mype_filter, comm_filter, &
                                    npes_filter, MPIerr, MPIstatus
       use mod_model_pdaf, only: nx, ny, integr
-      use mod_statevector_pdaf, only: dim_state_p
+      use mod_statevector_pdaf, only: dim_state_p, obsA
       use mod_StateWriter_pdaf, only: write_state
       use mod_statevector_pdaf, only: update_ocean
       use PDAF_saveVar, only: YRY
-      use mod_inflation_pdaf, only: forget
+      use mod_inflation_pdaf, only: forget, alpha
       include 'mpif.h'
 
       INTEGER, INTENT(in) :: step        !< Current time step (negative for call after forecast)
@@ -204,9 +204,6 @@ contains
       real(wp) :: inv_dim_ens, inv_dim_ens1, rmserror_est
       
       integer :: i
-
-
-      real(wp) :: alpha = 0.05, trace
 
       integer :: col, row
       INTEGER :: lib_info                ! Status flag for LAPACK calls
@@ -252,7 +249,7 @@ contains
       variance_p = variance_p*inv_dim_ens1
       variance(:dim_p) = variance_p
       rmserror_est = sqrt(sum(variance)/dim_state_p)
-
+      print *, obsA
       ! adjut ocean update
       if (update_ocean) then
          do i = 1, dim_ens
@@ -261,35 +258,47 @@ contains
 
          if (step < 0) then
             state_p_background = state_p
-            print *, 'step <0', sqrt(sum(variance(2*nx*ny + 1:))/dim_state_p)
          else if (step > 0) then
             ! adjust mean
             increment = state_p - state_p_background
-            state_p(2*nx*ny + 1:) =  state_p_background(2*nx*ny + 1:) + alpha*sqrt(forget)*increment(2*nx*ny + 1:)
-            ! adjust ensemble spread
-            ALLOCATE(svals(dim_ens))
-            ALLOCATE(work(3 * dim_ens))
-            ALLOCATE(Asqrt(dim_ens, dim_ens))
-            ALLOCATE(inflation(dim_ens, dim_ens))
-            ldwork = 3 * dim_ens
-            ! do svd decomposition to compute (I + 1./(forgetting_factor/dim_ens -1)*(1 - alpha**2)*Y.TR^-1Y)^1/2
-            YRY = YRY*(1. - alpha*alpha/forget)/(dim_ens -1)
-            CALL dsyev('V', 'L', dim_ens, YRY, dim_ens, svals, work, ldwork, lib_info)
-            svals = sqrt(forget + svals)
-            print *, 'transformed svals', svals
-              DO col = 1, dim_ens
-                 DO row = 1, dim_ens
-                    Asqrt(row, col) = YRY(row, col) * svals(col)
-                 END DO
-              END DO
-            inflation = MATMUL(Asqrt, TRANSPOSE(YRY))
-            ! the resulting matrix inflation is the inflation matrix of the ensemble new_anomaly
-            new_anomaly = MATMUL(anomaly, inflation)
-            trace = 0.
-            do i = 1, dim_ens
-               trace = trace + inflation(i, i)
-               ens_p(2*nx*ny + 1:, i) = state_p(2*nx*ny + 1:) + new_anomaly(2*nx*ny + 1:, i)
-            end do
+            if (obsA) then
+               state_p(2*nx*ny + 1:) = state_p_background(2*nx*ny + 1:) + alpha*sqrt(forget)*increment(2*nx*ny + 1:)
+            else
+               state_p(:2*nx*ny) =  state_p_background(:2*nx*ny) + alpha*sqrt(forget)*increment(:2*nx*ny)
+            end if
+            if (abs(alpha - 1.) > 1e-6) then
+               ! adjust ensemble spread
+               ALLOCATE(svals(dim_ens))
+               ALLOCATE(work(3 * dim_ens))
+               ALLOCATE(Asqrt(dim_ens, dim_ens))
+               ALLOCATE(inflation(dim_ens, dim_ens))
+               ldwork = 3 * dim_ens
+               ! do svd decomposition to compute (I + 1./(forgetting_factor/dim_ens -1)*(1 - alpha**2)*Y.TR^-1Y)^1/2
+               YRY = YRY*(1. - alpha*alpha)
+               CALL dsyev('V', 'L', dim_ens, YRY, dim_ens, svals, work, ldwork, lib_info)
+               svals = sqrt(forget*(dim_ens - 1) + svals)
+               print *, 'transformed svals', svals
+               DO col = 1, dim_ens
+                  DO row = 1, dim_ens
+                     Asqrt(row, col) = YRY(row, col) * svals(col)
+                  END DO
+               END DO
+               inflation = MATMUL(Asqrt, TRANSPOSE(YRY))
+               ! the resulting matrix inflation is the inflation matrix of the ensemble new_anomaly
+               new_anomaly = MATMUL(anomaly, inflation)
+               DEALLOCATE(svals, work, Asqrt, inflation)
+            else
+               new_anomaly = anomaly*sqrt(forget*(dim_ens - 1))
+            end if
+            if (obsA) then
+               do i = 1, dim_ens
+                  ens_p(2*nx*ny + 1:, i) = state_p(2*nx*ny + 1:) + new_anomaly(2*nx*ny + 1:, i)/sqrt(dim_ens - 1.)
+               end do
+            else
+               do i = 1, dim_ens
+                  ens_p(:2*nx*ny, i) = state_p(:2*nx*ny) + new_anomaly(:2*nx*ny, i)/sqrt(dim_ens - 1.)
+               end do
+            end if
 
             ! ensemble variance
             variance_p = 0._wp
@@ -297,11 +306,7 @@ contains
                variance_p = variance_p + (ens_p(:, i) - state_p)*(ens_p(:, i) - state_p)
             end do
             variance_p = variance_p*inv_dim_ens1
-            variance(:dim_p) = variance_p
-            rmserror_est = sqrt(sum(variance)/dim_state_p)
-            print *, trace
-            print *, 'step >0', sqrt(sum(variance(2*nx*ny + 1:))/dim_state_p)
-            DEALLOCATE(svals, work, Asqrt, inflation)
+            rmserror_est = sqrt(sum(variance_p)/dim_state_p)
          end if
       end if
 
