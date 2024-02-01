@@ -292,7 +292,7 @@ contains
                   ocoord_p(1, cnt) = (i-1)*obs(i_obs)%obs_den*dx
                   ocoord_p(2, cnt) = (j-1)*obs(i_obs)%obs_den*dy
                   ivar_obs_p(cnt) = 1._wp/obs(i_obs)%rms_obs/obs(i_obs)%var_obs(i, j, k)
-                  if (obs(i_obs)%var_obs(i, j, k) < 1e-12) ivar_obs_p(i) = 1e14
+                  if (obs(i_obs)%var_obs(i, j, k) < 1e-12) ivar_obs_p(cnt) = 1e14
                   cnt = cnt + 1
                end do
             end do
