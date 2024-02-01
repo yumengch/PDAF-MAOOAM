@@ -1,0 +1,17 @@
+&setup_nml
+obsname = 'A'
+filename = 'obs-50.nc'
+filename_var = 'traj_var.nc'
+doassim = 1
+delt_obs = 90 
+file_timestep = 1
+rms_obs = 0.25
+disttype = 0
+ncoord = 2
+nrows = 1
+use_global_obs = 1
+obs_den = 8
+obsvar = 'b'
+file_timecount = 0
+/
+

@@ -1,0 +1,17 @@
+&PDAF_nml
+screen = 2
+/
+&ens_nml
+  dim_ens = 16
+/
+&model_nml
+ ny = 129
+ nx = 129
+ restart_it = 1
+ tw = 90
+ ensscale(1) = 0.2
+ ensscale(2) = 0.15
+ ensscale(3) = 1.
+ ensscale(4) = 0.4
+/
+
