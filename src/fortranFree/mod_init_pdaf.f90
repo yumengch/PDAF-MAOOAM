@@ -90,11 +90,11 @@ contains
 
       if (filterpe) call finalize_state_writer()
       ! Show allocated memory for PDAF
-      if (mype_world==0) call PDAF_print_info(2)
-      if (mype_world==0) call PDAF_print_info(11)
+      call PDAF_print_info(2)
+      call PDAF_print_info(11)
 
       ! Print PDAF timings onto screen
-      if (mype_world==0) call PDAF_print_info(3)
+      call PDAF_print_info(3)
  
       ! Deallocate PDAF arrays
       call PDAF_deallocate()

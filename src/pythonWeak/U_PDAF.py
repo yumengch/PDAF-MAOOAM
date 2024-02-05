@@ -155,7 +155,6 @@ class PDAFUserFuncs:
                 print((stepnow, stepnow, 'Next observation at time step',
                        stepnow + nsteps))
         else:
-            nsteps = 0
             doexit = 1
             if (self.das.pe.mype_world == 0):
                 print((stepnow, 'No more observations - end assimilation'))

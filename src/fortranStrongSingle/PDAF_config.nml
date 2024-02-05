@@ -1,0 +1,32 @@
+&ens_nml
+  dim_ens = 1
+  n_modeltasks = 1
+/
+&n_obs_nml
+ n_obs = 1
+/
+&obs_nml
+  namelist_names(1) = 'obsA.nml'
+/
+&filter_nml
+filtertype = 100
+subtype = 0
+type_trans = 0
+type_sqrt = 0
+incremental = 0
+covartype = 1
+rank_analysis_enkf = 0
+/
+&infl_nml
+type_forget = 0
+forget = 1
+/
+&local_nml
+ loc_weight=0
+ local_range=0
+ srange=0
+/
+&model_nml
+ ny = 17
+ nx = 9
+/

@@ -201,6 +201,7 @@ contains
       ! Initialize coordinate array of observations
       ! on the process sub-domain
       print *, 'assimilate ', obs(i_obs)%obsvar, ' component'
+      offset = 0
       if (obs(i_obs)%obsvar == 'o') offset = 2*nx*ny
       if (dim_obs_p > 0) then
          allocate(obs_p(dim_obs_p))

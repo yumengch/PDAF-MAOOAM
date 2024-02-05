@@ -80,7 +80,6 @@ contains
             stepnow, 'Next observation at time step', stepnow + nsteps
       ELSE
          ! *** End of assimilation process ***
-         nsteps = 0          ! No more steps
          doexit = 1          ! Exit assimilation
 
          IF (mype_world == 0) WRITE (*, '(i7, 3x, a)') &
