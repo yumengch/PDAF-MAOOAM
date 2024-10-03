@@ -1,4 +1,5 @@
 program genCovar
+! use omp_lib
 use mod_kind_pdaf, only: wp
 use netcdf
 use model_def, only: model
@@ -56,7 +57,8 @@ offset = [0, natm, 2*natm, 2*natm+noc, 2*natm+2*noc]
 ierr = nf90_inq_dimid(ncid, 'time', dimid)
 ierr = nf90_inquire_dimension(ncid, dimid, len=nt)
 print *, nt
-nx = 129
+nx = 513
+print *, 'number of dimension size is', nx
 ny = nx
 if (.not. allocated(psi_a)) allocate(psi_a(nx, ny))
 if (.not. allocated(T_a)  ) allocate(T_a(nx, ny))
@@ -78,7 +80,6 @@ T_a_mean = 0._wp
 psi_o_mean = 0._wp
 T_o_mean = 0._wp
 print *, 1._wp/nt
-! nt = 100
 dt = 1._wp/nt
 do it = 1, nt
    do i = 1, 4
@@ -141,7 +142,7 @@ deallocate(coeffs)
 deallocate(psi_a_mean, T_a_mean, psi_o_mean, T_o_mean)
 deallocate(psi_a_var, T_a_var, psi_o_var, T_o_var)
 contains
-   real(wp) function Fa(P, x, y)
+   real(wp) pure function Fa(P, x, y)
       integer,  intent(in) :: P
       real(wp), intent(in) :: x
       real(wp), intent(in) :: y
@@ -149,7 +150,7 @@ contains
       Fa = sqrt(2.)*cos(P*y)
    end function Fa
 
-   real(wp) function Fk(M, P, n, x, y)
+   real(wp) pure function Fk(M, P, n, x, y)
       integer,  intent(in) :: M, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
@@ -158,7 +159,7 @@ contains
       Fk = 2*cos(M*x*n)*sin(P*y)
    end function Fk
 
-   real(wp) function Fl(H, P, n, x, y)
+   real(wp) pure function Fl(H, P, n, x, y)
       integer,  intent(in) :: H, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
@@ -167,7 +168,7 @@ contains
       Fl = 2*sin(H*x*n)*sin(P*y)
    end function Fl
 
-   real(wp) function phi(H, P, n, x, y)
+   real(wp) pure function phi(H, P, n, x, y)
       integer,  intent(in) :: H, P
       real(wp), intent(in) :: n
       real(wp), intent(in) :: x
@@ -187,6 +188,7 @@ contains
 
       real(wp), parameter :: pi = dacos(-1.D0)
       integer   :: H, M, P
+      real(wp)  :: psi_val, T_val
       real(wp)  :: n
       integer   :: i, j, k
       real(wp)  :: dx, dy
@@ -208,28 +210,45 @@ contains
          typ = maooam_model%inner_products%awavenum(k)%typ
 
          if (typ == "A") then
+!$omp parallel do collapse(2) private(i, j, psi_val, T_val)
             do j = 1, ny
                do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fa(P, (i-1)*dx, (j-1)*dy)
-                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fa(P, (i-1)*dx, (j-1)*dy)
-               enddo
-            enddo
-         else if (typ == "K") then
-            do j = 1, ny
-               do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
-                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
-               enddo
-            enddo
-         else if (typ == "L") then
-            do j = 1, ny
-               do i = 1, nx
-                  psi_a(i, j) = psi_a(i, j) + coeffs(k)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
-                  T_a(i, j) = T_a(i, j) + coeffs(k + natm)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
-               enddo
-            enddo
-         end if
+                  psi_val = psi_a(i, j) + coeffs(k)*Fa(P, (i-1)*dx, (j-1)*dy)
+                  T_val = T_a(i, j) + coeffs(k + natm)*Fa(P, (i-1)*dx, (j-1)*dy)
 
+                  ! Assigning back to the shared arrays
+                  psi_a(i, j) = psi_val
+                  T_a(i, j) = T_val
+               enddo
+            enddo
+!$omp end parallel do
+         else if (typ == "K") then
+!$omp parallel do collapse(2) private(i, j, psi_val, T_val)
+            do j = 1, ny
+               do i = 1, nx
+                  psi_val = psi_a(i, j) + coeffs(k)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
+                  T_val = T_a(i, j) + coeffs(k + natm)*Fk(M, P, n, (i-1)*dx, (j-1)*dy)
+
+                  ! Assigning back to the shared arrays
+                  psi_a(i, j) = psi_val
+                  T_a(i, j) = T_val
+               enddo
+            enddo
+!$omp end parallel do
+         else if (typ == "L") then
+!$omp parallel do collapse(2) private(i, j, psi_val, T_val)
+            do j = 1, ny
+               do i = 1, nx
+                  psi_val = psi_a(i, j) + coeffs(k)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
+                  T_val = T_a(i, j) + coeffs(k + natm)*Fl(H, P, n, (i-1)*dx, (j-1)*dy)
+
+                  ! Assigning back to the shared arrays
+                  psi_a(i, j) = psi_val
+                  T_a(i, j) = T_val
+               enddo
+            enddo
+!$omp end parallel do
+         end if
       end do
 
       ! get ocean components
@@ -238,12 +257,18 @@ contains
       do k = 1, noc
          H = maooam_model%inner_products%owavenum(k)%H
          P = maooam_model%inner_products%owavenum(k)%P
+!$omp parallel do collapse(2) private(i, j, psi_val, T_val)
          do j = 1, ny
             do i = 1, nx
-               psi_o(i, j) = psi_o(i, j) + coeffs(k + 2*natm)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
-               T_o(i, j) = T_o(i, j) + coeffs(k + 2*natm + noc)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
+               psi_val = psi_o(i, j) + coeffs(k + 2*natm)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
+               T_val = T_o(i, j) + coeffs(k + 2*natm + noc)*phi(H, P, n, (i-1)*dx, (j-1)*dy)
+
+               ! Assigning back to the shared arrays
+               psi_o(i, j) = psi_val
+               T_o(i, j) = T_val
             enddo
          enddo
+!$omp end parallel do
       end do
    end subroutine toPhysical
 

@@ -127,5 +127,38 @@ contains
       op_dur = op_dur + &
           (real(timer_op_end, wp) - real(timer_op_start, wp))/real(t_rate, wp)
    end subroutine obs_op_pdafomi
+
+   SUBROUTINE init_dim_obs_l_pdafomi(domain_p, step, dim_obs, dim_obs_l)
+      use mod_observations_pdaf, only: init_dim_obs_l
+      use mod_model_pdaf, only: nx, ny, pi, maooam_model
+
+       ! *** Arguments ***
+      integer, intent(in)  :: domain_p     !< Index of current local analysis domain
+      integer, intent(in)  :: step         !< Current time step
+      integer, intent(in)  :: dim_obs      !< Full dimension of observation vector
+      integer, intent(inout) :: dim_obs_l  !< Local dimension of observation vector
+
+      real(wp) :: coords_l(2)
+      real(wp) :: dx, dy, n
+      integer :: state_index
+      integer :: i_obs
+      ! **********************************************
+      ! *** Initialize local observation dimension ***
+      ! **********************************************
+      state_index = domain_p - ((domain_p - 1)/nx/ny)*nx*ny
+      n = maooam_model%model_configuration%physics%n
+      dx = 2*pi/n/(nx - 1)
+      dy = pi/(ny - 1)
+      coords_l(1) = ceiling(real(state_index)/real(ny))
+      coords_l(2) = state_index - (coords_l(1) - 1)*ny
+      coords_l(1) = (coords_l(1) - 1)*dx
+      coords_l(2) = (coords_l(2) - 1)*dy
+
+      do i_obs = 1, n_obs
+         if (obs(i_obs)%doassim == 0) cycle
+         call init_dim_obs_l(i_obs, coords_l, dim_obs_l)
+      end do
+      
+   END SUBROUTINE init_dim_obs_l_pdafomi
 end module mod_u_pdafomi_pdaf
 

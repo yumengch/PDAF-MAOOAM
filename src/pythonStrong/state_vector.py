@@ -16,9 +16,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+import model
 
-
-class StateVector:
+class state_vector:
 
     """Dimension of state vector and ensemble size
 
@@ -32,13 +32,11 @@ class StateVector:
         dimension of PE-local state vector
     """
 
-    def __init__(self, model, dim_ens):
+    def __init__(self, model:model.model, dim_ens: int) -> None:
         """StateVector constructor
 
         Parameters
         ----------
-        config : `Config.PDAFConfig`
-            configuration object
         model : `Model.Model`
             model object
         dim_ens : int

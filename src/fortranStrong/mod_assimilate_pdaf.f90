@@ -26,20 +26,30 @@ contains
       USE mod_U_pdaf, only: collect_state_pdaf, &    ! Collect a state vector from model fields
                             distribute_state_pdaf, &  ! Distribute a state vector to model fields
                             next_observation_pdaf, &  ! Provide time step of next observation
-                            prepoststep_ens_pdaf
+                            prepoststep_ens_pdaf, &
+                            init_n_domains_pdaf, &
+                            init_dim_l_pdaf, &
+                            g2l_state_pdaf, &
+                            l2g_state_pdaf
       USE mod_U_PDAFomi_pdaf, only: init_dim_obs_pdafomi, & ! Get dimension of full obs. vector for PE-local domain
                              obs_op_pdafomi, &         ! Obs. operator for full obs. vector for PE-local domain
                              init_dim_obs_gen_pdafomi, &
-                             get_obs_f
+                             get_obs_f, &
+                             init_dim_obs_l_pdafomi
       IMPLICIT NONE
       integer, intent(in) :: it
       ! *** Local variables ***
       INTEGER :: status_pdaf          ! PDAF status flag
+      INTEGER :: localfilter          ! Flag for domain-localized filter
+
+      ! Check  whether the filter is domain-localized
+      CALL PDAF_get_localfilter(localfilter)
 
       ! *********************************
       ! *** Call assimilation routine ***
       ! *********************************
       ! Call assimilate routine for global or local filter
+
       if (filtertype == 100) then
          ! generate observations
          call PDAFomi_generate_obs(collect_state_pdaf, &
@@ -49,7 +59,14 @@ contains
                                       get_obs_f, &
                                       prepoststep_ens_pdaf, &
                                       next_observation_pdaf, status_pdaf)
+      ELSE if (localfilter == 1) then
+         call set_doassim_pdaf(it)
+         CALL PDAFomi_assimilate_local(collect_state_pdaf, distribute_state_pdaf, &
+         init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, init_n_domains_pdaf, &
+         init_dim_l_pdaf, init_dim_obs_l_pdafomi, g2l_state_pdaf, l2g_state_pdaf, &
+         next_observation_pdaf, status_pdaf)
       ELSE
+         ! Call the PDAF routine for global filter step
          call set_doassim_pdaf(it)
          CALL PDAFomi_assimilate_global(collect_state_pdaf, distribute_state_pdaf, &
               init_dim_obs_pdafomi, obs_op_pdafomi, prepoststep_ens_pdaf, &

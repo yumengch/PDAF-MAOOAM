@@ -18,7 +18,7 @@
 
 module mod_observations_pdaf
 use mod_kind_pdaf, only: wp
-use PDAFomi, only: obs_f
+use PDAFomi, only: obs_f, obs_l, PDAFomi_set_debug_flag
 use mod_parallel_pdaf, only: abort_parallel
 implicit none
 
@@ -42,6 +42,7 @@ type :: obs_t
    real(wp),    allocatable :: obs_field_p(:, :, :)
    real(wp),    allocatable :: var_obs(:, :, :)
    type(obs_f)              :: thisobs
+   type(obs_l)             :: thisobs_l
 
    integer :: file_timecount = 0
    integer :: file_timestep
@@ -148,7 +149,7 @@ contains
       ! (<0 for no periodicity)
       allocate(obs(i_obs)%thisobs%domainsize(ncoord))
       obs(i_obs)%thisobs%domainsize(1) = 2*pi/maooam_model%model_configuration%physics%n
-      obs(i_obs)%thisobs%domainsize(2) = pi
+      obs(i_obs)%thisobs%domainsize(2) = -pi
       obs(i_obs)%missing_value = -99999
 
       ! allocate array for observation and its variance
@@ -156,6 +157,8 @@ contains
       if (obs(i_obs)%obsvar == 'b') nVar = 4
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
+      if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+      if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
       allocate(obs(i_obs)%obs_field_p(nxo, nyo, nVar))
       allocate(obs(i_obs)%var_obs(nxo, nyo, nVar))
       obs(i_obs)%obs_field_p = 0.
@@ -181,8 +184,10 @@ contains
       real(wp), allocatable :: ivar_obs_p(:)
       real(wp), allocatable :: ocoord_p(:, :)
 
-      nvar = 2
+      ! specify the assimilation flag for omi
+      obs(i_obs)%thisobs%doassim = obs(i_obs)%doassim
 
+      nvar = 2
       call get_obs_field(i_obs)
       ! read observation variance
       call get_var_obs(i_obs)
@@ -192,7 +197,8 @@ contains
       dy = pi/(ny - 1)
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
-
+      if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+      if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
       ! count valid observations
       dim_obs_p = nvar*nxo*nyo
       obs(i_obs)%dim_obs = dim_obs_p
@@ -259,6 +265,7 @@ contains
       real(wp), allocatable :: ocoord_p(:, :)
 
       obs(i_obs)%doassim = 1
+      obs(i_obs)%thisobs%doassim = obs(i_obs)%doassim
       nvar = 4
       ! read observation variance
       call get_var_obs(i_obs)
@@ -268,6 +275,8 @@ contains
       dy = pi/(ny - 1)
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
+      if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+      if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
       ! count valid observations
       dim_obs_p = nvar*nxo*nyo
       obs(i_obs)%dim_obs = dim_obs_p
@@ -342,6 +351,8 @@ contains
       endif
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
+      if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+      if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
 
       ! read observations
       cnt = 1
@@ -389,7 +400,8 @@ contains
       endif
       nxo = nx/obs(i_obs)%obs_den + 1
       nyo = ny/obs(i_obs)%obs_den + 1
-
+      if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+      if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
       ! read observations
       cnt = 1
       do i = i_start, i_end
@@ -419,6 +431,29 @@ contains
       ! observation operator for observed grid point values
       CALL PDAFomi_obs_op_gridpoint(obs(i_obs)%thisobs, state_p, ostate)
    END SUBROUTINE obs_op_gridpoint
+
+   SUBROUTINE init_dim_obs_l(i_obs, coords_l, dim_obs_l)
+
+      ! Include PDAFomi function
+      USE PDAFomi, ONLY: PDAFomi_init_dim_obs_l
+
+      ! Include localization radius and local coordinates
+      USE mod_localisation_pdaf, &
+           ONLY: cradius, locweight, sradius
+
+       ! *** Arguments ***
+      integer, intent(in)  :: i_obs        !< Index of current observation
+      real(wp), intent(in)  :: coords_l(2)     !< Index of current local analysis domain
+      integer, intent(inout) :: dim_obs_l  !< Local dimension of observation vector
+
+      ! **********************************************
+      ! *** Initialize local observation dimension ***
+      ! **********************************************
+
+      CALL PDAFomi_init_dim_obs_l(obs(i_obs)%thisobs_l, obs(i_obs)%thisobs, coords_l, &
+           locweight, cradius, sradius, dim_obs_l)
+
+   END SUBROUTINE init_dim_obs_l
 
    subroutine set_doassim_pdaf(step)
       integer, intent(in) :: step

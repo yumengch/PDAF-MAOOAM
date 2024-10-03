@@ -1,13 +1,11 @@
 import datetime
 import numpy as np
 import xarray as xr
-import netCDF4
-
-# from MAOOAM.model.params_maooam import natm, noc
+import netCDF4 # type: ignore
 
 
-class StateWriter:
-    def __init__(self, filename, dim_ens, model):
+class obs_writer:
+    def __init__(self, filename, model, obs_den):
         self.nc = netCDF4.Dataset(filename,'w')
 
         attrs = self.getFileAttrs()
@@ -15,32 +13,30 @@ class StateWriter:
             setattr(self.nc, attr, value)
 
         self.nc.createDimension('time', None)
-        self.nx, self.ny = model.nx, model.ny
-        self.dim_ens = dim_ens
         time=self.nc.createVariable('time', np.dtype('float64').char, 'time')
         time.long_name = 'time'
         time.units = "days since 1900-1-1 0:0:0"
-        for dim, dimlen in zip(['ens', 'ny', 'nx'], [dim_ens, self.ny, self.nx]):
+
+        self.nx, self.ny = model.nx//obs_den + 1, model.ny//obs_den + 1
+        for dim, dimlen in zip(['nx', 'ny'], [self.nx, self.ny]):
             self.nc.createDimension(dim, dimlen)
 
-        for vartype, typename in zip(['f', 'a'], ['forecast', 'analysis']):
-            for attr in zip(*self.getVarAttrs()):
-                varname, standard_name, long_name, dim = attr
-                var = self.nc.createVariable(f'{varname}_{vartype}', np.dtype('float64').char, dim)
-                var.standard_name = standard_name + '_' + typename
-                var.long_name = typename + ' of ' + long_name
+        for attr in zip(*self.getVarAttrs()):
+            varname, standard_name, long_name, dim = attr
+            var = self.nc.createVariable(varname, np.dtype('float64').char, dim)
+            var.standard_name = standard_name
+            var.long_name = long_name
 
         self.time_count = 0
 
 
-    def write(self, step, typename, inputData):
+    def write(self, step, inputData):
         data = self.distributeData(inputData)
         self.nc['time'][self.time_count] = step
-        for i, varname in enumerate([f'psi_a_{typename}', f'T_a_{typename}', 
-                                     f'psi_o_{typename}', f'T_o_{typename}']):
+        for i, varname in enumerate(['psi_a', 'T_a',
+                                     'psi_o', 'T_o']):
             self.nc[varname][self.time_count] = data[i]
-        if int(self.nc['time'][-1]) != step:
-            self.time_count += 1
+        self.time_count += 1
 
 
     def getVarAttrs(self):
@@ -55,17 +51,16 @@ class StateWriter:
                            'temperature in the ocean'
                           ]
 
-        dims = [('time', 'ny', 'nx', 'ens'), ('time', 'ny', 'nx', 'ens'), 
-                ('time', 'ny', 'nx', 'ens'), ('time', 'ny', 'nx', 'ens')]
+        dims = [('time', 'ny', 'nx'), ('time', 'ny', 'nx'), ('time', 'ny', 'nx'), ('time', 'ny', 'nx')]
         return fieldnames, field_standard_name, field_long_name, dims
 
 
     def getFileAttrs(self):
         attrs = dict()
         attrs['Conventions'] = 'CF-1.8'
-        attrs['title'] = 'NetCDF output from MAOOAM-pyPDAF'
+        attrs['title'] = 'NetCDF output of synthetic observations from MAOOAM-pyPDAF'
         attrs['institution'] = 'NCEO-AWI-UoR'
-        attrs['source'] = 'MAOOAM-pyPDAF'
+        attrs['source'] = 'pyPDAF and MAOOAM'
         attrs['history'] = f'{datetime.datetime.now().isoformat(timespec="seconds")}: Data created'
         attrs['reference'] = 'https://github.com/yumengch/pyPDAF'
         return attrs
@@ -73,7 +68,7 @@ class StateWriter:
 
     def distributeData(self, inputData):
         size = self.nx*self.ny
-        output = [inputData[i*size:(i+1)*size].reshape(self.ny, self.nx, self.dim_ens) for i in range(4)]
+        output = [inputData[i*size:(i+1)*size].reshape(self.ny, self.nx) for i in range(4)]
         return output
 
 
@@ -90,3 +85,6 @@ class StateWriter:
             da[varname] = xr.DataArray(data[i],
                                          dims=dim, name=varname, attrs=attrs)
         return da
+
+    def __del__(self):
+        self.nc.close()

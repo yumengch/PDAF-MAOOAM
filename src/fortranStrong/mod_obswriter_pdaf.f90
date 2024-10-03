@@ -35,6 +35,8 @@ contains
          ! initialise dimensions
          nxo = nx/obs(i_obs)%obs_den + 1
          nyo = ny/obs(i_obs)%obs_den + 1
+         if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+         if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
          call check( nf90_def_dim( ncid(i_obs), 'time', nf90_unlimited, dimid(i_obs, 1) ) )
          call check( nf90_def_var( ncid(i_obs), 'time', nf90_double, dimid(i_obs, 1), varid_time(i_obs) ) )
          call check( nf90_put_att( ncid(i_obs), varid_time(i_obs), 'long_name', 'time' ) )
@@ -55,7 +57,7 @@ contains
 
    subroutine setAttrs(i_obs)
       integer, intent(in) :: i_obs
-      
+
       call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'Conventions', 'CF-1.8') )
       call check( nf90_put_att(ncid(i_obs),  NF90_GLOBAL, 'title', &
       'NetCDF output of synthetic observations from MAOOAM-pyPDAF') )
@@ -121,6 +123,8 @@ contains
       do i = 1, 4
          nxo = nx/obs(i_obs)%obs_den + 1
          nyo = ny/obs(i_obs)%obs_den + 1
+         if (obs(i_obs)%obs_den == 1) nxo = nxo - 1
+         if (obs(i_obs)%obs_den == 1) nyo = nyo - 1
          call check( nf90_put_var(ncid(i_obs), varid(i_obs, i), &
                              inputData((i-1)*nxo*nyo + 1: i*nxo*nyo), &
                              start=[1, 1, time_count(i_obs)], &

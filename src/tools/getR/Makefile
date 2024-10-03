@@ -1,9 +1,9 @@
-MODEL_DIR=../../fortran/model
-NETCDF_INC=-I/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/include
-NETCDF_LIB=-L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-c-4.8.1-okwvugrilg2h3nnql5i6bhlz6mz24swi/lib -lnetcdf -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/lib -lnetcdff -ldl -lm
+MODEL_DIR=model
+NETCDF_INC=-I/usr/include/openmpi-x86_64 -I/usr/lib64/gfortran/modules/openmpi
+NETCDF_LIB=-L/usr/lib64/openmpi/lib -lnetcdff
 
 # Define relevant compiler options for debug case and normal case for each compiler
-COMPILER_FLAGS = $(NETCDF_INC) -O2 -cpp -I../../fortran -I../../fortran/model
+COMPILER_FLAGS = -fopenmp $(NETCDF_INC) -O2 -cpp -I$(MODEL_DIR)
 LD_FLAGS = $(NETCDF_LIB)
 
 FC=mpif90
@@ -32,7 +32,7 @@ MODEL_OBJECTS = $(MODEL_DIR)/params.o \
         $(MODEL_DIR)/rk4_ad_integrator.o \
         $(MODEL_DIR)/stat.o
 
-PDAF_OBJECTS = ../../fortran/mod_kind_pdaf.o ../../fortran/mod_romb_pdaf.o getR.o
+PDAF_OBJECTS = mod_kind_pdaf.o mod_romb_pdaf.o getR.o
 
 all: $(PROGRAMS)
 

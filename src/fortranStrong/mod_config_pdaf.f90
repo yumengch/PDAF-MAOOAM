@@ -9,6 +9,7 @@ contains
       use mod_filteroptions_pdaf, only: filter_nml
       use mod_inflation_pdaf, only: infl_nml
       use mod_model_pdaf, only: model_nml
+      use mod_localisation_pdaf, only: local_nml
 
       namelist /PDAF_nml/ screen
       open (20, file='PDAF_config.nml')
@@ -19,6 +20,8 @@ contains
       read(20, nml=infl_nml)
       rewind(20)
       read(20, nml=model_nml)
+      rewind(20)
+      read(20, nml=local_nml)
       rewind(20)
       close(20)
    end subroutine read_namelist

@@ -19,10 +19,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
 import xarray as xr
 
-import pyPDAF.PDAF.PDAFomi as PDAFomi
+import pyPDAF.PDAF as PDAF # type: ignore
 import configparser
 
-class Obs:
+import log
+import model
+import localisation
+import parallelisation
+
+class obs:
 
     """observation information and user-supplied routines
 
@@ -79,7 +84,8 @@ class Obs:
 
     """
 
-    def __init__(self, i_obs, obsname, mype_filter, model_n):
+    def __init__(self, i_obs:int, obsname:str, pe:parallelisation.parallelisation,
+                 model_t:model.model) -> None:
         """constructor
 
         Parameters
@@ -94,62 +100,62 @@ class Obs:
             model domain aspect ratio parameter
         """
 
-        self.i_obs = i_obs
+        self.i_obs:int = i_obs
+        self.obsname:str = obsname
+        if (pe.mype_filter == 0):
+            log.logger.info(('Assimilate observations:', obsname))
 
-        if (mype_filter == 0):
-            print(('Assimilate observations:', obsname))
-
-        config = configparser.ConfigParser()
+        config:configparser.ConfigParser = configparser.ConfigParser()
         config.read(f'{obsname}.ini')
 
-        config = config['init']
+        config_init:configparser.SectionProxy = config['init']
 
-        self.filename = config.get('filename', f'MAOOAM_{obsname}.nc')
-        self.filename_var = config.get('filename_var', f'MAOOAM_{obsname}.nc')
+        self.filename:str = config_init.get('filename', f'MAOOAM_{obsname}.nc')
+        self.filename_var:str = config_init.get('filename_var', f'MAOOAM_{obsname}.nc')
 
-        self.doassim = config.getint('doassim', 1)
-        self.delt_obs = config.getint('delt_obs', 2)
-        self.rms_obs = config.getfloat('rms_obs', 1.0)
+        self.doassim:int = config_init.getint('doassim', 1)
+        self.delt_obs:int = config_init.getint('delt_obs', 2)
+        self.rms_obs:float = config_init.getfloat('rms_obs', 1.0)
 
         # Specify type of distance computation
         # 0=Cartesian 1=Cartesian periodic
-        self.disttype = config.getint('disttype', 0)
+        self.disttype:int = config_init.getint('disttype', 0)
 
         # Number of coordinates used for distance computation
         # The distance compution starts from the first row
-        self.ncoord = config.getint('ncoord', 2)
+        self.ncoord:int = config_init.getint('ncoord', 2)
 
         # Allocate process-local index array
         # This array has as many rows as required
         # for the observation operator
         # 1 if observations are at grid points;
         # >1 if interpolation is required
-        self.nrows = config.getint('nrows', 1)
+        self.nrows:int = config_init.getint('nrows', 1)
 
         # Size of domain for periodicity for disttype=1
         # (<0 for no periodicity)
-        self.domainsize = np.zeros(self.ncoord)
-        self.domainsize[0] = 2*np.pi/model_n
-        self.domainsize[1] = np.pi
+        self.domainsize:np.ndarray = np.zeros(self.ncoord)
+        self.domainsize[0] = model_t.xc[0, -1]
+        self.domainsize[1] = model_t.yc[-1, 0]
 
         # Type of observation error: (0) Gauss, (1) Laplace
-        self.obs_err_type = config.getint('obs_err_type', 0)
+        self.obs_err_type:int = config_init.getint('obs_err_type', 0)
 
         # Whether to use (1) global full obs.
         # (0) obs. restricted to those relevant for a process domain
-        self.use_global_obs = config.getint('use_global_obs', 1)
+        self.use_global_obs:int = config_init.getint('use_global_obs', 1)
 
         self.icoeff_p = None
 
         self.missing_value = -999
 
-        self.file_timecount = -1
-        self.file_timestep = config.getint('file_timestep', None)
-        self.obs_den = config.getint('obs_den', None) # 8
-        self.varnames = config.get('varnames', None).split(',')
+        self.file_timecount:int = -1
+        self.file_timestep:int = config_init.getint('file_timestep', 1)
+        self.obs_den:int = config_init.getint('obs_den', 1) # 8
+        self.varnames:list[str] = config_init.get('varnames', None).split(',')
 
 
-    def init_dim_obs(self, step, model):
+    def init_dim_obs(self, step:int, model_t:model.model) -> None:
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
@@ -164,7 +170,7 @@ class Obs:
             return
 
         print ('PDAFomi: Obs varname: ', self.varnames)
-        obs_field = self.get_obs_field(step)
+        obs_field = self.get_obs_field()
 
         # Count valid observations that
         # lie within the process sub-domain
@@ -177,9 +183,9 @@ class Obs:
         # on the process sub-domain
         if self.dim_obs_p > 0:
             self.set_obs_p(obs_field_p)
-            self.set_id_obs_p(obs_field_p, model)
-            self.set_ocoord_p(obs_field_p, model)
-            self.set_ivar_obs_p(obs_field_p)
+            self.set_id_obs_p(obs_field_p, model_t)
+            self.set_ocoord_p(obs_field_p, model_t)
+            self.set_ivar_obs_p()
         else:
             self.obs_p = np.zeros(1)
             self.ivar_obs_p = np.zeros(1)
@@ -189,31 +195,29 @@ class Obs:
         self.set_PDAFomi()
 
 
-    def init_dim_obs_gen(self, step, model):
+    def init_dim_obs_gen(self, model_t:model.model) -> None:
         """intialise PDAFomi and getting dimension of observation vector
 
         Parameters
         ----------
-        step : int
-            current time step
         model : int
             rank of the PE in filter communicator
         """
 
         # Count valid observations that
         # lie within the process sub-domain
-        obs_field = np.zeros((len(self.varnames), model.ny, model.nx))[:, ::self.obs_den, :: self.obs_den]
-        obs_field_p = obs_field.ravel()
-        self.dim_obs_p = 4*17*17
+        obs_field:np.ndarray = np.zeros((len(self.varnames), model_t.ny, model_t.nx))[:, ::self.obs_den, :: self.obs_den]
+        obs_field_p:np.ndarray = obs_field.ravel()
+        self.dim_obs_p = len(obs_field_p)
 
         # Initialize vector of observations on the process sub-domain
         # Initialize coordinate array of observations
         # on the process sub-domain
         if self.dim_obs_p > 0:
             self.set_obs_p(obs_field_p)
-            self.set_id_obs_p(obs_field_p, model)
-            self.set_ocoord_p(obs_field_p, model)
-            self.set_ivar_obs_p(obs_field_p)
+            self.set_id_obs_p(obs_field_p, model_t)
+            self.set_ocoord_p(obs_field_p, model_t)
+            self.set_ivar_obs_p()
         else:
             self.obs_p = np.zeros(1)
             self.ivar_obs_p = np.zeros(1)
@@ -223,7 +227,7 @@ class Obs:
         self.set_PDAFomi()
 
 
-    def set_obs_p(self, obs_field_p):
+    def set_obs_p(self, obs_field_p: np.ndarray) -> None:
         """set up PE-local observation vector
 
         Parameters
@@ -231,11 +235,11 @@ class Obs:
         obs_field_p : ndarray
             PE-local observation field
         """
-        obs_field_tmp = obs_field_p.ravel()
+        obs_field_tmp:np.ndarray = obs_field_p.ravel()
         self.obs_p = np.zeros(self.dim_obs_p)
         self.obs_p[:self.dim_obs_p] = obs_field_tmp[obs_field_tmp > self.missing_value]
 
-    def set_id_obs_p(self, obs_field_p, model):
+    def set_id_obs_p(self, obs_field_p: np.ndarray, model_t:model.model) -> None:
         """set id_obs_p
 
         Parameters
@@ -243,21 +247,21 @@ class Obs:
         obs_field_p : ndarray
             PE-local observation field
         """
-        nx = model.nx
-        ny = model.ny
-        nobsvar = len(self.varnames)
-        offset = 0
+        nx:int = model_t.nx
+        ny:int = model_t.ny
+        nobsvar:int = len(self.varnames)
+        offset:int = 0
         if 'psi_a' not in self.varnames: offset = 2*nx*ny
-        self.id_obs_p = np.zeros((self.nrows, self.dim_obs_p), dtype=int)
-        obs_field_tmp = obs_field_p.ravel()
-        i = np.arange(nx)[::self.obs_den]
-        j = np.arange(ny)[::self.obs_den]
-        idx = np.arange(nx*ny, dtype=int).reshape(ny, nx)[j][:, i].ravel()
+        self.id_obs_p = np.zeros((self.nrows, self.dim_obs_p), dtype=np.intc)
+        obs_field_tmp:np.ndarray = obs_field_p.ravel()
+        i:np.ndarray = np.arange(nx)[::self.obs_den]
+        j:np.ndarray = np.arange(ny)[::self.obs_den]
+        idx:np.ndarray = np.arange(nx*ny, dtype=int).reshape(ny, nx)[j][:, i].ravel()
         self.id_obs_p[0, :self.dim_obs_p] = 1 + offset + np.concatenate([idx + i*nx*ny
                                                                      for i in range(nobsvar)],
                                                                      dtype=int)[obs_field_tmp > self.missing_value]
 
-    def set_ocoord_p(self, obs_field_p, model):
+    def set_ocoord_p(self, obs_field_p: np.ndarray, model_t: model.model) -> None:
         """set ocoord_p
 
         Parameters
@@ -266,28 +270,30 @@ class Obs:
             PE-local observation field
         """
         self.ocoord_p = np.zeros((self.ncoord, self.dim_obs_p))
-        nx = model.nx
-        ny = model.ny
-        dx = model.xc[0, 1] - model.xc[0, 0]
-        dy = model.yc[1, 0] - model.yc[0, 0]
-        obs_field_tmp = obs_field_p.ravel()
-        nobs = len(self.varnames)
+        nx:int = model_t.nx
+        ny:int = model_t.ny
+        dx:float = model_t.xc[0, 1] - model_t.xc[0, 0]
+        dy:float = model_t.yc[1, 0] - model_t.yc[0, 0]
+        obs_field_tmp: np.ndarray = obs_field_p.ravel()
+        nobs:int = len(self.varnames)
         # assuming first ravel dx then ravel dy
+        nyo = ny//self.obs_den + 1 if self.obs_den != 1 else ny
+        nxo = nx//self.obs_den + 1 if self.obs_den != 1 else nx
         self.ocoord_p[0, :self.dim_obs_p] = np.tile(np.arange(nx)[::self.obs_den]*dx,
-                                                    (ny//self.obs_den + 1)*nobs
+                                                    nyo*nobs
                                                     )[obs_field_tmp > self.missing_value]
         self.ocoord_p[1, :self.dim_obs_p] = np.tile(np.repeat(
                                                               np.arange(ny)[::self.obs_den]*dy,
-                                                              (nx//self.obs_den + 1)
+                                                              nxo
                                                               ),
                                                     nobs)[obs_field_tmp > self.missing_value]
 
-    def set_ivar_obs_p(self, obs_field_p):
+    def set_ivar_obs_p(self) -> None:
         """set ivar_obs_p
         """
 
-        f = xr.open_dataset(self.filename_var, decode_times=False)
-        var_obs = np.concatenate([f[varname+'_var'].to_numpy().ravel()
+        f:xr.Dataset = xr.open_dataset(self.filename_var, decode_times=False)
+        var_obs:np.ndarray = np.concatenate([f[varname+'_var'].to_numpy().ravel()
                                  for varname in self.varnames])
         f.close()
 
@@ -298,49 +304,44 @@ class Obs:
                                           )/self.rms_obs/var_obs
                                    )
 
-    def get_obs_field(self, step):
+    def get_obs_field(self) -> np.ndarray:
         """retrieve observation field
-
-        Parameters
-        ----------
-        step : int
-            current time step
 
         Returns
         -------
         obs_field : ndarray
             observation field
         """
-        f = xr.open_dataset(self.filename, decode_times=False)
+        f:xr.Dataset = xr.open_dataset(self.filename, decode_times=False)
         self.file_timecount += self.file_timestep
-        obs_field = np.concatenate([f[varname].isel(time=self.file_timecount).to_numpy().ravel()
-                              for varname in self.varnames])
+        obs_field:np.ndarray = np.concatenate([f[varname].isel(time=self.file_timecount).to_numpy().ravel()
+                                              for varname in self.varnames])
         f.close()
         return obs_field
 
-    def set_PDAFomi(self):
+    def set_PDAFomi(self) -> None:
         """set PDAFomi obs_f object
         """
-        PDAFomi.set_doassim(self.i_obs, self.doassim)
-        PDAFomi.set_disttype(self.i_obs, self.disttype)
-        PDAFomi.set_ncoord(self.i_obs, self.ncoord)
-        PDAFomi.set_id_obs_p(self.i_obs, self.id_obs_p)
+        PDAF.omi_set_doassim(self.i_obs, self.doassim)
+        PDAF.omi_set_disttype(self.i_obs, self.disttype)
+        PDAF.omi_set_ncoord(self.i_obs, self.ncoord)
+        PDAF.omi_set_id_obs_p(self.i_obs, self.id_obs_p)
         if self.domainsize is not None:
-            PDAFomi.set_domainsize(self.i_obs, self.domainsize)
+            PDAF.omi_set_domainsize(self.i_obs, self.domainsize)
         if self.obs_err_type is not None:
-            PDAFomi.set_obs_err_type(self.i_obs, self.obs_err_type)
+            PDAF.omi_set_obs_err_type(self.i_obs, self.obs_err_type)
         if self.use_global_obs is not None:
-            PDAFomi.set_use_global_obs(self.i_obs, self.use_global_obs)
+            PDAF.omi_set_use_global_obs(self.i_obs, self.use_global_obs)
         if self.icoeff_p is not None:
-            PDAFomi.set_icoeff_p(self.i_obs, self.icoeff_p)
+            PDAF.omi_set_icoeff_p(self.i_obs, self.icoeff_p)
 
-        self.dim_obs = PDAFomi.gather_obs(self.i_obs,
+        self.dim_obs = PDAF.omi_gather_obs(self.i_obs,
                                           self.obs_p,
                                           self.ivar_obs_p,
                                           self.ocoord_p,
                                           0.)
 
-    def obs_op_gridpoint(self, step, state_p, ostate):
+    def obs_op_gridpoint(self, step : int, state_p: np.ndarray, ostate : np.ndarray) -> np.ndarray:
         """convert state vector by observation operator
 
         Parameters
@@ -351,16 +352,32 @@ class Obs:
             PE-local state vector
         ostate : ndarray
             state vector transformed by identity matrix
+
+        Returns
+        -------
+        ostate : ndarray
+            state vector transformed by observation operator
         """
-        ostate = PDAFomi.obs_op_gridpoint(self.i_obs, state_p, ostate)
+        ostate = PDAF.omi_obs_op_gridpoint(self.i_obs, state_p, ostate)
         return ostate
 
-    def deallocate_obs(self):
-        """deallocate PDAFomi object
+    def init_dim_obs_l(self, coords_l: np.ndarray, dim_obs_l : int, local:localisation.localisation) -> int:
+        """initialise dimensions of observations for local domain
 
         Parameters
         ----------
-        step : int
-            current time step
+        coords_l : ndarray
+            local domain coordinates
+        dim_obs_l : int
+            dimension of observation vector for local domain
+
+        Returns
+        -------
+            dim_obs_l : int
+                dimension of observation vector for local domain
         """
-        PDAFomi.deallocate_obs(self.i_obs)
+        dim_obs_l = PDAF.omi_init_dim_obs_l_iso(self.i_obs, coords_l,
+                                    local.locweight,
+                                    local.cradius,
+                                    local.sradius, dim_obs_l)
+        return dim_obs_l

@@ -1,14 +1,18 @@
 MODEL_DIR=model
 
-PDAF_INC=-I/home/users/yumengch/pyPDAF/PDAF-PDAF_V2.1/include 
-PDAF_LIB=-L/home/users/yumengch/pyPDAF/PDAF-PDAF_V2.1/lib/ -lpdaf-var -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netlib-lapack-3.10.1-2ugsub76cuzvc4ozk5oyjs27cstb23wh/lib64 -llapack -lblas
-NETCDF_INC=-I/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/include
-NETCDF_LIB=-L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-c-4.8.1-okwvugrilg2h3nnql5i6bhlz6mz24swi/lib -lnetcdf -L/home/users/yumengch/spack/opt/spack/linux-centos7-x86_64/gcc-10.3.0/netcdf-fortran-4.5.4-mj2hjugxr6ngqu5iwejgs6jmplozc7zb/lib -lnetcdff -ldl -lm
+PDAF_INC=-I/home/users/ia923171/PDAF_V2.2.1/include 
+PDAF_LIB=-L/home/users/ia923171/PDAF_V2.2.1/lib/ -lpdaf-var 
+
+MKLROOT = /home/users/ia923171/.conda/envs/maooam/lib
+LAPACK_LIB=-Wl,--start-group $(MKLROOT)/libmkl_intel_lp64.a $(MKLROOT)/libmkl_sequential.a $(MKLROOT)/libmkl_core.a -Wl,--end-group -lm -ldl -lpthread
+
+NETCDF_INC=-I/usr/include/mpich-x86_64 -I/usr/lib64/gfortran/modules/mpich
+NETCDF_LIB=-L/usr/lib64/mpich/lib -lnetcdff
 
 # Define relevant compiler options for debug case and normal case for each compiler
-COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -cpp -O2
+COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -cpp -O2 -I$(MODEL_DIR)
 # COMPILER_FLAGS = $(NETCDF_INC) $(PDAF_INC) -Wall -cpp -O0 -g -fcheck='all' -fbacktrace
-LD_FLAGS = $(NETCDF_LIB) $(PDAF_LIB)
+LD_FLAGS = $(PDAF_LIB) $(LAPACK_LIB) $(NETCDF_LIB)
 
 FC=mpif90
 LD=$(FC)

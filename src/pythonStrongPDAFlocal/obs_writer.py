@@ -1,12 +1,10 @@
 import datetime
 import numpy as np
 import xarray as xr
-import netCDF4
-
-# from MAOOAM.model.params_maooam import natm, noc
+import netCDF4 # type: ignore
 
 
-class ObsWriter:
+class obs_writer:
     def __init__(self, filename, model, obs_den):
         self.nc = netCDF4.Dataset(filename,'w')
 
@@ -35,7 +33,7 @@ class ObsWriter:
     def write(self, step, inputData):
         data = self.distributeData(inputData)
         self.nc['time'][self.time_count] = step
-        for i, varname in enumerate(['psi_a', 'T_a', 
+        for i, varname in enumerate(['psi_a', 'T_a',
                                      'psi_o', 'T_o']):
             self.nc[varname][self.time_count] = data[i]
         self.time_count += 1

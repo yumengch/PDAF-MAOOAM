@@ -16,30 +16,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+import logging
 
-
-class Inflation:
-
-    """Inflation options
-
-    Attributes
-    ----------
-    forget : float
-        forgetting factor
-    type_forget : int
-        Type of forget factor
-    """
-
-    def __init__(self, config):
-        """Inflation constructor
-
-        Parameters
-        ----------
-        """
-        # type of forgetting factor
-        # - (0) fixed
-        # - (1) global adaptive
-        # - (2) local adaptive for LSEIK/LETKF/LESTKF
-        self.type_forget = config.getint('type_forget', 0)
-        # forgeting factor
-        self.forget = config.getfloat('forget', 1)
+logger:logging.Logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+ch:logging.StreamHandler = logging.StreamHandler()
+formatter:logging.Formatter = logging.Formatter('%(levelname)s: %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)

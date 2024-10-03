@@ -46,6 +46,7 @@ contains
 
    subroutine init_pdaf(screen)
       use pdaf_interfaces_module, only: PDAF_init, PDAF_get_state
+      use mod_localisation_pdaf, only: set_lim_coords
       use mod_U_pdaf, only: init_ens_pdaf, &
                             distribute_state_pdaf, &
                             next_observation_pdaf,prepoststep_ens_pdaf
@@ -76,29 +77,31 @@ contains
 
       call PDAF_get_state(steps, timenow, doexit, next_observation_pdaf, distribute_state_pdaf, &
                           prepoststep_ens_pdaf, status_pdaf)
+
+      ! Set the domain limits for the localisation in OMI
+      call set_lim_coords()
    end subroutine init_pdaf
 
    subroutine finalize_pdaf()
       use mod_parallel_pdaf, &
          only: mype_world, mpierr
       use pdaf_interfaces_module, only: PDAF_print_info, PDAF_deallocate
-      use mod_StateWriter_pdaf, only: finalize_state_writer 
+      use mod_StateWriter_pdaf, only: finalize_state_writer
       use mod_obswriter_pdaf, only: finalizeObs
       use mod_observations_pdaf, only: finalize_obs
       use mpi
 
       if (filterpe) call finalize_state_writer()
-      ! Show allocated memory for PDAF
-      call PDAF_print_info(2)
+      ! *** Show allocated memory for PDAF ***
       call PDAF_print_info(11)
 
-      ! Print PDAF timings onto screen
-      call PDAF_print_info(3)
-      
+      ! *** Print PDAF timings onto screen ***
+      if (mype_world==0) call PDAF_print_info(3)
+
       if (filtertype == 100)  call finalizeObs()
 
       call finalize_obs()
- 
+
       ! Deallocate PDAF arrays
       call PDAF_deallocate()
       call mpi_barrier(mpi_comm_world, mpierr)

@@ -15,19 +15,12 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 """
+import logging
 
-from PDAF_system import DAS
-import config
-
-def main():
-    config_t = config.PDAFConfig()
-    das = DAS()
-    das.init(config_t)
-    das.init_pdaf()
-    das.forward()
-    das.finalise()
-
-if __name__ == '__main__':
-    main()
+logger:logging.Logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+ch:logging.StreamHandler = logging.StreamHandler()
+formatter:logging.Formatter = logging.Formatter('%(levelname)s: %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)

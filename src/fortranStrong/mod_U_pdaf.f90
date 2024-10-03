@@ -25,6 +25,7 @@
 module mod_U_pdaf
 use mod_kind_pdaf, only: wp
 USE mod_parallel_pdaf, ONLY: mype_world
+use pdaf_interfaces_module, only: PDAF_set_debug_flag
 implicit none
 
 logical :: firsttime = .true.
@@ -133,7 +134,6 @@ contains
          end if
       end do
 
-
       if (distributeAtmos) then
          if (mype_world == 0) print *, 'distribute to atmosphere component'
          psi_a = reshape(state_p(:nx*ny)           , [nx, ny])
@@ -180,7 +180,7 @@ contains
 
       call toPhysical_O()
       offset = 2*nx*ny
-      if (mype_world == 0) print *, 'collect ocean', offset
+      if (mype_world == 0) print *, 'collect ocean'
       state_p(offset+1:offset+nx*ny) = reshape(psi_o, [nx*ny])
       state_p(offset+nx*ny+1:offset+2*nx*ny) = reshape(T_o, [nx*ny])
       call SYSTEM_CLOCK(timer_collect_end, t_rate)
@@ -192,7 +192,6 @@ contains
    SUBROUTINE prepoststep_ens_pdaf(step, dim_p, dim_ens, dim_ens_p, &
                                    dim_obs_p, state_p, uinv, ens_p, flag)
       use mod_parallel_pdaf, only: mype_filter
-      include 'mpif.h'
 
       INTEGER, INTENT(in) :: step        !< Current time step (negative for call after forecast)
       INTEGER, INTENT(in) :: dim_p       !< PE-local state dimension
@@ -210,7 +209,7 @@ contains
       real(wp) :: variance(dim_p)
       real(wp) :: inv_dim_ens, inv_dim_ens1, rmserror_est
       integer :: i
-
+      print *, dim_p, shape(ens_p)
       call SYSTEM_CLOCK(timer_prepost_start)
 
       ! pre- and post-processing of ensemble
@@ -223,7 +222,7 @@ contains
             print *, 'Analyze assimilated state ensemble'
          endif
       endif
-
+      
       ! ensemble mean
       inv_dim_ens = 1._wp/dim_ens
       if (dim_ens > 1) then
@@ -257,4 +256,77 @@ contains
       prepost_dur = prepost_dur + &
           (real(timer_prepost_end, wp) - real(timer_prepost_start, wp))/real(t_rate, wp)
    END SUBROUTINE prepoststep_ens_pdaf
+
+   SUBROUTINE init_n_domains_pdaf(step, n_domains_p)
+      use mod_statevector_pdaf, only: dim_state_p
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in)  :: step        !< Current time step
+      INTEGER, INTENT(out) :: n_domains_p !< PE-local number of analysis domains
+
+
+      ! ************************************
+      ! *** Initialize number of domains ***
+      ! ************************************
+
+      ! Here simply the state dimension
+      n_domains_p = dim_state_p
+
+   END SUBROUTINE init_n_domains_pdaf
+
+   SUBROUTINE init_dim_l_pdaf(step, domain_p, dim_l)
+
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in)  :: step     !< Current time step
+      INTEGER, INTENT(in)  :: domain_p !< Current local analysis domain
+      INTEGER, INTENT(out) :: dim_l    !< Local state dimension
+
+      ! *** local variables ***
+      INTEGER :: i                       ! Counters
+      INTEGER :: off_p                   ! Process-local offset in global state vector
+      dim_l = 1
+   END SUBROUTINE init_dim_l_pdaf
+
+   SUBROUTINE l2g_state_pdaf(step, domain_p, dim_l, state_l, dim_p, state_p)
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in) :: step           !< Current time step
+      INTEGER, INTENT(in) :: domain_p       !< Current local analysis domain
+      INTEGER, INTENT(in) :: dim_l          !< Local state dimension
+      INTEGER, INTENT(in) :: dim_p          !< PE-local full state dimension
+      REAL(wp), INTENT(in)    :: state_l(dim_l) !< State vector on local analysis domain
+      REAL(wp), INTENT(inout) :: state_p(dim_p) !< PE-local full state vector
+
+      ! **************************************************
+      ! *** Initialize elements of global state vector ***
+      ! **************************************************
+      state_p(domain_p) = state_l(1)
+   END SUBROUTINE l2g_state_pdaf
+
+   SUBROUTINE g2l_state_pdaf(step, domain_p, dim_p, state_p, dim_l, state_l)
+      IMPLICIT NONE
+
+      ! *** Arguments ***
+      INTEGER, INTENT(in) :: step           !< Current time step
+      INTEGER, INTENT(in) :: domain_p       !< Current local analysis domain
+      INTEGER, INTENT(in) :: dim_p          !< PE-local full state dimension
+      INTEGER, INTENT(in) :: dim_l          !< Local state dimension
+      REAL(wp), INTENT(in)    :: state_p(dim_p) !< PE-local full state vector
+      REAL(wp), INTENT(out)   :: state_l(dim_l) !< State vector on local analysis domain
+
+      ! *** local variables ***
+      INTEGER :: i                          ! Counter
+
+      ! *************************************
+      ! *** Initialize local state vector ***
+      ! *************************************
+
+      ! Generic initialization using ID_LSTATE_IN_PSTATE set in INIT_DIM_L_PDAF
+      state_l(1) = state_p(domain_p)
+
+   END SUBROUTINE g2l_state_pdaf
 end module mod_U_pdaf

@@ -131,3 +131,6 @@ dmypy.json
 *.nc
 *.mod
 *.o
+*.pdf
+*.eps
+*.npz

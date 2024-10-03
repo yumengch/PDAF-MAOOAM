@@ -1,11 +1,11 @@
 import os
 import xarray as xr
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as mgs
-import matplotlib.ticker as mticker
-import matplotlib.colors as mcolors
-import mod_model
+import matplotlib.pyplot as plt # type: ignore
+import matplotlib.gridspec as mgs # type: ignore
+import matplotlib.ticker as mticker # type: ignore
+import matplotlib.colors as mcolors # type: ignore
+# import mod_model # type: ignore
 import time
 
 from mpi4py import MPI
@@ -46,8 +46,8 @@ def getRMSE(truth, forecast):
 
 
 def saveError(is_obs, is_all):
-    ft = xr.open_dataset('/home/users/yumengch/MAOOAM_EXPs/results/truth/truth_for.nc', decode_times=False)
-    f = xr.open_dataset('maooam_A1_For.nc', decode_times=False)
+    ft = xr.open_dataset('/storage/research/nceo/ia923171/pyPDAF_MAOOAM/results/truth/truth_for.nc', decode_times=False)
+    f = xr.open_dataset('/storage/research/nceo/ia923171/MAOOAM/both/maooamA1O1.nc', decode_times=False)
     f = f.isel(time=range(f.dims['time']-1))
     ft = ft.isel(time=range(_DAtime, _DAtime+f.dims['time']))
     print (f['time'][0].to_numpy(), ft['time'][0].to_numpy())
@@ -58,7 +58,7 @@ def saveError(is_obs, is_all):
     iRank = MPI.COMM_WORLD.Get_rank()
     nt= nt_total//nPE
     if iRank == nPE - 1: nt = nt_total - (nPE-1)*nt
-    n_subnt = 100
+    n_subnt = 125
     assert np.isclose(nt//n_subnt, nt/n_subnt), f'try different n_subnt for {nt} steps'
     it_start = nt*iRank
     it_end = it_start + nt
@@ -124,20 +124,20 @@ def saveError(is_obs, is_all):
             np.savez('error_obs.npz', **error_total, **error_total_f)
         else:
             np.savez('error_noobs.npz', **error_total, **error_total_f)
-        if is_all: np.savez('error.npz', **error_total, **error_total_f)    
+        if is_all: np.savez('error.npz', **error_total, **error_total_f)
 
 
 def saveSpread(is_obs, is_all):
-    f = xr.open_dataset('maooam_A1_For.nc', decode_times=False)
+    f = xr.open_dataset('/storage/research/nceo/ia923171/MAOOAM/both/maooamA1O1.nc', decode_times=False)
     f = f.isel(time=range(f.dims['time']-1))
     nt_total = f.dims['time']
 
     nPE = MPI.COMM_WORLD.Get_size()
-    assert nPE == 8, 'set 8 processors used'
+    # assert nPE == 8, 'set 8 processors used'
     iRank = MPI.COMM_WORLD.Get_rank()
     nt = nt_total//nPE
     if iRank == nPE - 1: nt = nt_total - (nPE-1)*nt
-    n_subnt = 100
+    n_subnt = 125
     assert np.isclose(nt//n_subnt, nt/n_subnt), f'try different n_subnt for {nt} steps'
     it_start = nt*iRank
     it_end = it_start + nt
@@ -317,36 +317,52 @@ def plotIncrementInnovationError():
 
 
 def plotError():
-    errorObs = np.load('error_obs.npz')
-    errorNoObs = np.load('error_noobs.npz')
-    for varname in _varnames:
-        print ('analysis error of observed quantities', varname, np.mean(errorObs[varname+'_a'].ravel()[365:]))
-        print ('analysis error of unobserved quantities', varname, np.mean(errorNoObs[varname+'_a'].ravel()[365:]))
-    errorAll = np.load('error.npz')
-
-    spreadObs = np.load('spread_obs.npz')
-    spreadNoObs = np.load('spread_noobs.npz')
-    spreadAll = np.load('spread.npz')
-
+    """Plot the error and spread of the free run and the SCDA run.
+    """
     t = np.arange(100000)*90*1000/1.032/3600/24/365
     fig = plt.figure(1)
     fig.clf()
     w, h = fig.get_size_inches()
-    fig.set_size_inches(2*w, 2*h)
-    gs = mgs.GridSpec(2, 2, left=0.1, bottom=0.14, right=0.995, top=0.96, wspace=0.19, hspace=0.34)
+    fig.set_size_inches(4*w, 2*h)
+    gs = mgs.GridSpec(2, 4, left=0.04, bottom=0.14, right=0.995, top=0.92, wspace=0.25, hspace=0.54)
+
+    errorObs = np.load('free/error_obs.npz')
+    errorNoObs = np.load('free/error_noobs.npz')
+    for varname in _varnames:
+        print ('analysis error of observed quantities', varname, np.mean(errorObs[varname+'_a'].ravel()[365:]))
+        print ('analysis error of unobserved quantities', varname, np.mean(errorNoObs[varname+'_a'].ravel()[365:]))
+    errorAll = np.load('free/error.npz')
+    spreadAll = np.load('free/spread.npz')
 
     for i, (varname, title, obserr) in enumerate(zip(_varnames, _titles, _obserr)):
-        ax = fig.add_subplot(gs[i])
+        ax = fig.add_subplot(gs[0, i])
+        LineErrAll, = ax.plot(t[365:], errorAll[varname+'_a'].ravel()[365:], color='k', label='err.')
+        LineStdAll, = ax.plot(t[365:], spreadAll[varname].ravel()[365:], color='r', label='std dev.')
+        lineObs = ax.axhline(obserr, color='grey', label='obs. std')
+        ax.set_xlabel('year')
+        ax.set_title(f'{title}')
+    fig.text(0.5, 0.97, r"Time series of free run on $129 \times 129$ grid points", ha='center', fontsize=20)
+
+    errorObs = np.load('scda/error_obs.npz')
+    errorNoObs = np.load('scda/error_noobs.npz')
+    for varname in _varnames:
+        print ('analysis error of observed quantities', varname, np.mean(errorObs[varname+'_a'].ravel()[365:]))
+        print ('analysis error of unobserved quantities', varname, np.mean(errorNoObs[varname+'_a'].ravel()[365:]))
+    errorAll = np.load('scda/error.npz')
+    spreadAll = np.load('scda/spread.npz')
+    for i, (varname, title, obserr) in enumerate(zip(_varnames, _titles, _obserr)):
+        ax = fig.add_subplot(gs[1, i])
         LineErrAll, = ax.plot(t[365:], errorAll[varname+'_a'].ravel()[365:], color='k', label='err.')
         LineStdAll, = ax.plot(t[365:], spreadAll[varname].ravel()[365:], color='r', label='std dev.')
         # lineObs = ax.axhline(obserr, color='grey', label='obs. std')
         ax.set_xlabel('year')
         ax.set_title(f'{title}')
+    fig.text(0.5, 0.49, r"Time series of SCDA analysis on $129 \times 129$ grid points", ha='center', fontsize=20)
 
     fig.legend(loc='outside lower center',
                handles=[LineErrAll, LineStdAll], #, lineObs],
                ncols=3)
-    fig.savefig('error.eps', dpi=300)
+    fig.savefig('error.pdf', dpi=300)
     plt.close(fig)
 
 
