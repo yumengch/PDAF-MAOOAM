@@ -1,7 +1,7 @@
 import configparser
 
 import numpy as np
-import pyPDAF_local.PDAF as PDAF # type: ignore
+import pyPDAF_local.PDAF as PDAF
 
 import log
 import state_vector
@@ -109,7 +109,7 @@ class localisation:
         """
         # initialize local state dimension
         dim_l = 1
-        id_lstate_in_pstate:np.ndarray = domain_p*np.ones(dim_l, dtype=np.intc)
+        id_lstate_in_pstate:np.ndarray = domain_p*np.ones((dim_l), dtype=np.intc)
         PDAF.local_set_indices(id_lstate_in_pstate)
         return dim_l
 

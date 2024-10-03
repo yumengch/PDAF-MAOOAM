@@ -18,7 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import numpy as np
-import pyPDAF_local.PDAF as PDAF # type: ignore
+import pyPDAF_local.PDAF as PDAF
 
 import config
 import log
@@ -85,7 +85,7 @@ class DAS:
 
         # init obs. output
         if self.options.filtertype == 100:
-            self.obs.setWriter(self.pe, self.model)
+            self.obs.setWriter()
 
         # Initial Screen output
         if (self.pe.mype_ens == 0):
@@ -93,7 +93,7 @@ class DAS:
             log.logger.info('+++++ MAOOAM +++++')
 
 
-    def init_pdaf(self):
+    def init_pdaf(self) -> None:
         """initialise PDAF
         """
         # All other filters
@@ -124,7 +124,7 @@ class DAS:
                                          distribtor.next_observation_pdaf,
                                          distribtor.distribute_initial_state,
                                          init_processor.initial_process,
-                                        status)
+                                         status)
 
         self.local.set_lim_coords(self.model.xc[0, 0], self.model.xc[0, -1],
                                   self.model.yc[0, 0], self.model.yc[-1, 0])
@@ -179,6 +179,7 @@ class DAS:
         else:
             distribute_state = distribtor.distribute_atmosphere_state
 
+        status:int = 0
         if self.options.filtertype == 100:
             status = \
                 PDAF.omi_generate_obs(colltor.collect_state_pdaf,
@@ -190,7 +191,7 @@ class DAS:
                                      distribtor.next_observation_pdaf)
         elif self.local.local_filter:
             status = \
-                PDAF.omi_assimilate_local(colltor.collect_state_pdaf,
+                PDAF.localomi_assimilate(colltor.collect_state_pdaf,
                                         distribute_state,
                                         self.obs.init_dim_obs_pdafomi,
                                         self.obs.obs_op_pdafomi,
@@ -198,9 +199,8 @@ class DAS:
                                         self.local.init_n_domains_pdaf,
                                         self.local.init_dim_l_pdaf,
                                         self.obs.init_dim_obs_l_pdafomi,
-                                        PDAF.local_g2l_cb,
-                                        PDAF.local_l2g_cb,
-                                        distribtor.next_observation_pdaf)
+                                        distribtor.next_observation_pdaf,
+                                        status)
         else:
             status = \
                 PDAF.omi_assimilate_global(colltor.collect_state_pdaf,

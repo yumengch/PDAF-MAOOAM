@@ -190,7 +190,7 @@ class obs:
             self.obs_p = np.zeros(1)
             self.ivar_obs_p = np.zeros(1)
             self.ocoord_p = np.zeros((self.ncoord, 1))
-            self.id_obs_p = np.zeros((self.nrows, 1))
+            self.id_obs_p = np.zeros((self.nrows, 1), dtype=np.intc)
 
         self.set_PDAFomi()
 
@@ -222,7 +222,7 @@ class obs:
             self.obs_p = np.zeros(1)
             self.ivar_obs_p = np.zeros(1)
             self.ocoord_p = np.zeros((self.ncoord, 1))
-            self.id_obs_p = np.zeros((self.nrows, 1))
+            self.id_obs_p = np.zeros((self.nrows, 1), dtype=np.intc)
 
         self.set_PDAFomi()
 
