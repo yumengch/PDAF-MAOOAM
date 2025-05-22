@@ -1,7 +1,8 @@
-"""plot the wallclock time of the different Python and Fortran implementations under different resolutions"""
+"""plot the wallclock time of the different
+Python and Fortran implementations under different resolutions
+"""
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import matplotlib.gridspec as mgs
 
 
@@ -15,8 +16,8 @@ _labels = ['internal','pre-post', 'distribute state',
               'OMI setup', 'total']
 _overallnames = ['Initialize PDAF', 'Ensemble forecast', 'ETKF analysis', 'prepoststep_pdaf']
 ngrids : np.ndarray = 2**np.arange(7, 12) + 1
-_filename_fortran : str = '/home/users/ia923171/maooam_exps/strong_{ngrid}/myout.txt'
-_filename_py : str = '/home/users/ia923171/maooam_exps/strong_py_{ngrid}/myout.txt'
+_filename_fortran : str = '/home/users/ia923171/maooam_exps_add_revision/strong_{mem}mem/myout.txt'
+_filename_py : str = '/home/users/ia923171/maooam_exps_add_revision/strong_py_{mem}mem/myout.txt'
 
 
 plt.rcParams['font.family'] = 'serif'
@@ -36,7 +37,7 @@ def read_time(filename: str) -> dict[str, float]:
         time[funcname] = 0.0
     time['overall'] = 0.0
 
-    with open(filename) as f:
+    with open(filename, 'r') as f:
         for line in f:
             for funcname in _funcnames:
                 if funcname in line and 'PDAF' in line:
@@ -54,15 +55,15 @@ def plot_bar() -> None:
     time_fortran : list[dict[str, float]] = []
 
     # retrieve wall clock time for python and fortran system
-    for ngrid in ngrids:
-        time_py.append(read_time(_filename_py.format(ngrid=ngrid)))
-        time_fortran.append(read_time(_filename_fortran.format(ngrid=ngrid)))
-    for name in time_py[0]:
-        print (name, time_py[0][name], time_fortran[0][name], time_py[0][name]/time_fortran[0][name])
-    for name in time_py[-1]:
-        print (name, time_py[-1][name], time_fortran[-1][name], time_py[-1][name]/time_fortran[-1][name])
+    for mem in ['16', '64', '128']:
+        time_py.append(read_time(_filename_py.format(mem=mem)))
+        time_fortran.append(read_time(_filename_fortran.format(mem=mem)))
     # print (time_py)
-    # print (time_fortran)
+    print (time_fortran)
+    for name in time_py[1]:
+        print (name, time_py[1][name], time_fortran[1][name], time_py[1][name]/time_fortran[1][name])
+    for name in time_py[2]:
+        print (name, time_py[2][name], time_fortran[2][name], time_py[2][name]/time_fortran[2][name])
     fig = plt.figure()
     gs = mgs.GridSpec(1, 1, figure=fig, left=0.095, right=1., top=0.99, bottom=0.28, wspace=0.3)
     w, h = fig.get_size_inches()
@@ -75,11 +76,12 @@ def plot_bar() -> None:
     ind = np.arange(len(_funcnames) + 1)*2.5 - 5*width
 
     ax = fig.add_subplot(gs[0])
-    for i, (ngrid, c) in enumerate(zip(ngrids, colors)):
+    for i, (mem, c) in enumerate(zip(['16', '64', '128'], colors)):
         ax.bar(ind - 5*width + 2*i*width, np.array(list(time_fortran[i].values())),
-               width, color=c, edgecolor='k', alpha=0.3, label=r'{ngrid} $\times$ {ngrid} (fort)'.format(ngrid=ngrid))
+               width, color=c, edgecolor='k', alpha=0.3,
+               label=f'{mem} members (fort)')
         ax.bar(ind - 5*width + (2*i+1)*width, np.array(list(time_py[i].values())),
-               width, color=c, label=r'{ngrid} $\times$ {ngrid} (py)'.format(ngrid=ngrid))
+               width, color=c, label=f'{mem} members (py)')
         print (time_fortran[i]['init_dim_obs_pdafomi'], time_py[i]['init_dim_obs_pdafomi'])
         ax.set_xticks(ind)
         ax.set_xticklabels([label for label in _labels], rotation=15)
@@ -87,7 +89,7 @@ def plot_bar() -> None:
         ax.set_ylabel('Time per analysis step (s) \n in log-scale')
         ax.legend(loc=(-0.05, -0.38), ncols=5, fontsize=11)
 
-    fig.savefig('wallclock_time.pdf', dpi=300)
+    fig.savefig('wallclock_time_ens.pdf', dpi=300)
 
 
 if __name__ == '__main__':

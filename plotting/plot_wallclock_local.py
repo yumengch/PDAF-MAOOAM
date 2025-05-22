@@ -67,8 +67,16 @@ def plot_bar_local() -> None:
     for filename in _filepath_fortran:
         time_fortran.append(read_time(filename))
 
+    print (time_py)
+
+    print (time_fortran)
+    for name in time_py[1]:
+        print (name, time_py[1][name], time_fortran[1][name], time_py[1][name]/time_fortran[1][name])
+    for name in time_py[-1]:
+        print (name, time_py[-1][name], time_fortran[-1][name], time_py[-1][name]/time_fortran[-1][name])
+
     fig = plt.figure()
-    gs = mgs.GridSpec(1, 1, figure=fig, left=0.08, right=1., top=0.99, bottom=0.33, wspace=0.3)
+    gs = mgs.GridSpec(1, 1, figure=fig, left=0.095, right=1., top=0.99, bottom=0.33, wspace=0.3)
     w, h = fig.get_size_inches()
     fig.set_size_inches(w*2, h)
 
@@ -88,7 +96,7 @@ def plot_bar_local() -> None:
         ax.set_xticks(ind[5:])
         ax.set_xticklabels([label for label in _labels[5:]], rotation=25)
         ax.set_yscale('log')
-        ax.set_ylabel('Time per analysis step (s)')
+        ax.set_ylabel('Time per analysis step (s) \n in log-scale')
         ax.legend(loc=(0.08, -0.5), ncols=4, fontsize=11)
 
     fig.savefig('wallclock_time_local.pdf', dpi=300)
